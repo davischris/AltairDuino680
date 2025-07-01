@@ -18,16 +18,10 @@ This emulator combines a 6800 CPU core and peripheral emulation with an Altair 6
 - Compatible with real S-record images used on the physical Altair 680
 - Debugging output on simulation halt
 
-## Usage
-
-1. Load the 6800 BASIC S-record (`.S19`) file into memory
-2. Start the emulator and jump to the BASIC entry point (e.g., `J 0000`)
-3. Use a serial terminal (e.g., Tera Term or PuTTY) to interact with BASIC
-
 ## Notes
 
 - This version currently has a double echo problem when running Altair 680 BASIC.  This can be solved by turing off the local echo in your terminal emulator.
-- The same BASIC ROM and S-records are used as with a physical Altair 680 to ensure compatibility
+- The same Monitor ROM and S-records are used with my physical Altair 680 to ensure compatibility
 
 ## License
 
