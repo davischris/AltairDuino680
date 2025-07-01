@@ -1,7 +1,6 @@
-# AltairDuino680
-# Altair 680 Emulator with 6800 BASIC
+# AltairDuino680 - an Altair 680 Emulator
 
-This project is an emulator for the Altair 680 computer, modified to run 6800 BASIC.
+This project is an emulator for the Altair 680 computer.
 
 ## Overview
 
@@ -27,7 +26,7 @@ This emulator combines a 6800 CPU core and peripheral emulation with an Altair 6
 
 ## Notes
 
-- This version avoids double echo problems seen in some serial configurations by emulating the ACIA more faithfully
+- This version currently has a double echo problem when running Altair 680 BASIC.  This can be solved by turing off the local echo in your terminal emulator.
 - The same BASIC ROM and S-records are used as with a physical Altair 680 to ensure compatibility
 
 ## License
