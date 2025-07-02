@@ -9,7 +9,7 @@ This emulator combines a 6800 CPU core and peripheral emulation with an Altair 6
 ## Code Origins
 
 - The **6800 CPU emulation** is adapted from the SIMH SWTPC emulator originally written by **William Beech**, with corrections and enhancements contributed by **James Nichols**.
-- The version of BASIC included was built from disassembled code provided by **Bruce Tomlin** and compiled with his asmx complier.
+- The version of BASIC included was built from disassembled code provided by **Bruce Tomlin** then modified and compiled with his asmx complier.
 - The **system and I/O emulation** is based on the SWTPC emulator by **Béla Török**, rewritten and modified to work with the **Altair 680** memory layout and hardware characteristics.
 
 ## Features
