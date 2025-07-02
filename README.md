@@ -9,6 +9,7 @@ This emulator combines a 6800 CPU core and peripheral emulation with an Altair 6
 ## Code Origins
 
 - The **6800 CPU emulation** is adapted from the SIMH SWTPC emulator originally written by **William Beech**, with corrections and enhancements contributed by **James Nichols**.
+- The version of BASIC included was built from disassembled code provided by **Bruce Tomlin** and compiled with his asmx complier.
 - The **system and I/O emulation** is based on the SWTPC emulator by **Béla Török**, rewritten and modified to work with the **Altair 680** memory layout and hardware characteristics.
 
 ## Features
@@ -20,7 +21,7 @@ This emulator combines a 6800 CPU core and peripheral emulation with an Altair 6
 
 ## Notes
 
-- This version currently has a double echo problem when running Altair 680 BASIC.  This can be solved by turing off the local echo in your terminal emulator.
+- The version of Altair 680 BASIC included (basic680.s19) was built from a disassembled version from Bruce Tomlin.  I corrected a few minor errors in it and assembled it using Bruce's asmx assembler.  It seems to be working well. Alert me to any issues you may find.
 - The same Monitor ROM and S-records are used with my physical Altair 680 to ensure compatibility
 
 ## License
