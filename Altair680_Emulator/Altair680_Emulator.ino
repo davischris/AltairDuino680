@@ -60,7 +60,7 @@ int32_t EmulateMC6850(char rw, int addr, int val = 0) {
                 break;
 
             case 1:  // Transmit data register
-                Serial.write(val & 0x7F);
+                Serial.write(val);
                 statusReg |= 0x02;  // Set TDRE
                 break;
         }
@@ -135,12 +135,12 @@ void setup() {
     Serial.setTimeout(2);  // Short timeout to flush lingering LF
 
     // Clear RAM
-    memset(RAM_0000_BFFF, 0x00, sizeof(RAM_0000_BFFF));
+    //memset(RAM_0000_BFFF, 0x00, sizeof(RAM_0000_BFFF));
 
-    for (int sp = 0x01FF; sp >= 0x01C0; sp -= 2) {
-        RAM_0000_BFFF[sp]     = 0x00;
-        RAM_0000_BFFF[sp - 1] = 0xFF;
-    }
+    // for (int sp = 0x01FF; sp >= 0x01C0; sp -= 2) {
+    //     RAM_0000_BFFF[sp]     = 0x00;
+    //     RAM_0000_BFFF[sp - 1] = 0xFF;
+    // }
 
      m6800_reset();
 
@@ -151,7 +151,7 @@ void setup() {
 void loop() {
     int32_t reason;
 
-    EmulateMC6850('r', 0x8000, 0);  // Check for serial input (RDRF)
+    //EmulateMC6850('r', 0x8000, 0);  // Check for serial input (RDRF)
     reason = sim_instr(1);         // Execute one instruction per loop
 
     if (reason != 0) {
