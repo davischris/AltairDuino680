@@ -1,6 +1,6 @@
 # AltairDuino680 - an Altair 680 Emulator
 
-This project is an emulator for the Altair 680 computer.
+This project emulates the MITS Altair 680 microcomputer using an Arduino Due to simulate a 6800-based CPU and peripherals, including serial communication via a Motorola MC6850 (ACIA) interface.
 
 ## Overview
 
@@ -14,10 +14,35 @@ This emulator combines a 6800 CPU core and peripheral emulation with an Altair 6
 
 ## Features
 
-- Runs original Altair 680 ROMs and 6800-compatible BASIC
+- Emulates Motorola 6800 CPU
+- Runs original Altair 680 ROM and 6800-compatible BASIC
 - Serial I/O emulation for ACIA at memory-mapped addresses
 - Compatible with real S-record images used on the physical Altair 680
 - Debugging output on simulation halt
+
+## Installation and Setup
+
+### Hardware
+- Arduino Due or compatible
+- USB cable
+
+### Software
+- Arduino IDE
+- Terminal Emulator (CoolTerm Tera Term, minicom, PuTTY, Serial, etc.)
+
+### Serial Settings
+- Baud Rate: 9600
+- Data/Parity/Stop Bits: 8N1
+- Flow Control: None
+- **Local Echo**: Off
+- **Line Ending**: Carriage Return (CR or \r only)
+
+## Loading Programs
+Use L from  the monitor prompt (".") to load Motorola S-records.
+
+At the prompt, press L and *do not* press return.  Transmit the .s19 text file from your terminal's send feature (no line ending conversion).
+
+Ensure all lines end with a single CR character,  Avoid CRLF.
 
 ## Notes
 
