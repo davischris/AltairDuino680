@@ -6,7 +6,7 @@ extern int32_t sim_instr(long);
 extern int32_t PC;
 extern int32_t SP;
 
-char RAM_0000_BFFF[0xC000];
+uint8_t RAM_0000_BFFF[0xC000];
 char StatusRegister = 0x02;
 char ControlRegister = 0;
 char ReceiveDataRegister = 0;
@@ -14,7 +14,7 @@ char ReceiveDataRegister = 0;
 #define MC6850_RTS 13
 
 /*
- * TRACE_PC flag can be set anywhere in simmulator, to cause m6800 "fetch_byte" to dump registers on opcode fetch,
+ * TRACE_PC flag can be set anywhere in simulator, to cause m6800 "fetch_byte" to dump registers on opcode fetch,
  * using the trace() function found in this file.
  */
 int32_t TRACE_PC;

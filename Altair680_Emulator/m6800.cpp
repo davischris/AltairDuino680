@@ -78,7 +78,7 @@
         WAI instruction
         I/O error in I/O simulator
         Invalid OP code (if ITRAP is set on CPU)
-        Invalid mamory address (if MTRAP is set on CPU)
+        Invalid memory address (if MTRAP is set on CPU)
 
    2. Interrupts.
       There are 4 types of interrupt, and in effect they do a 
