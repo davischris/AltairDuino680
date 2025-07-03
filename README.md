@@ -44,9 +44,26 @@ At the prompt, press L and *do not* press return.  Transmit the .s19 text file f
 
 Ensure all lines end with a single CR character,  Avoid CRLF.
 
+## About MITS Altair 680 BASIC
+
+This version of Altair 680 BASIC is not from an original distribution tape. Despite extensive searching, an authentic MITS or Microsoft distribution tape for the Altair 680 has not been found.
+
+Instead, this code is derived from a **memory image**—a dump of a running system’s RAM—containing both the BASIC program code and its workspace (including zero-page variables and stack).
+
+To make this version load and run correctly on actual Altair 680 hardware (or emulators), the following adjustments have been made:
+
+- The disassembly was carefully reviewed to identify and separate code, static data, and runtime workspace.
+- Sections corresponding to RAM variables, stack, and other workspace (normally reserved for system use and not meant to be loaded from tape) have been moved to end of the load image.
+- Any initialization required for proper operation is performed at runtime by the BASIC interpreter itself.
+
+As a result, **this image is suitable for loading via paper tape, S-record, or terminal, and should behave like the original BASIC as distributed by MITS/Microsoft.**  However, it is not an exact byte-for-byte match with any known original release.
+
+**If you have access to an original Altair 680 BASIC distribution tape, please consider sharing it with the vintage computing community!**
+
 ## Notes
 
 - The version of Altair 680 BASIC included (basic680.s19) was built from a disassembled version provided by Bruce Tomlin. I corrected a few minor errors in it and assembled it using Bruce's asmx assembler. It seems to be working well. Alert me to any issues you may find.
+- It's fairly obvious that this BASIC was
 - This BASIC does not like lowercase in commands (PRINT, NEW, FOR, etc).  While you can use lowercase within quotes in print statements (PRINT "Hey there lonely girl"), everything else should be uppercase.
 - Backspace does not work in version 1.1 of Altair 680 BASIC.  Back in 1976 they assumed you would use the strikeout character ("_").
 - The same Monitor ROM and S-records are used with my physical Altair 680 to ensure compatibility
