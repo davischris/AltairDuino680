@@ -46,9 +46,9 @@ Ensure all lines end with a single CR character,  Avoid CRLF.
 
 ## About MITS Altair 680 BASIC
 
-This version of Altair 680 BASIC is not from an original distribution tape. Despite extensive searching, an authentic MITS or Microsoft distribution tape for the Altair 680 has not been found.
+This version of Altair 680 BASIC is not from an original distribution tape. The original version of Altair 680 BASIC from MITS required serial communication with settings of 7 bits, Space parity, 1 stop bit.  7S1 is not supported by the Arduino Due, and many terminal emulator programs do not support it.
 
-Instead, this code is derived from a **memory image**—a dump of a running system’s RAM—containing both the BASIC program code and its workspace (including zero-page variables and stack).
+Instead, this code is derived from a **memory image**—a dump of a running system’s RAM—containing both the BASIC program code and its workspace (including zero-page variables and stack).  It has been modified to work with serial settings of 8N1.
 
 To make this version load and run correctly on actual Altair 680 hardware (or emulators), the following adjustments have been made:
 
@@ -57,8 +57,6 @@ To make this version load and run correctly on actual Altair 680 hardware (or em
 - Any initialization required for proper operation is performed at runtime by the BASIC interpreter itself.
 
 As a result, **this image is suitable for loading via paper tape, S-record, or terminal, and should behave like the original BASIC as distributed by MITS/Microsoft.**  However, it is not an exact byte-for-byte match with any known original release.
-
-**If you have access to an original Altair 680 BASIC distribution tape, please consider sharing it with the vintage computing community!**
 
 ## Notes
 
