@@ -78,7 +78,7 @@
         WAI instruction
         I/O error in I/O simulator
         Invalid OP code (if ITRAP is set on CPU)
-        Invalid memory address (if MTRAP is set on CPU)
+        Invalid mamory address (if MTRAP is set on CPU)
 
    2. Interrupts.
       There are 4 types of interrupt, and in effect they do a 
@@ -228,18 +228,6 @@ int32_t sim_instr(int32_t sim_interval)
             reason = STOP_IBKPT;               // stop simulation
             break;
         }  */
-
-        // 💥 Trap: prevent executing from 0x0000 (often an error)
-        if (PC == 0x0000) {
-            if (TRACE_PC)
-                Serial.println("Trap: PC returned to 0x0000 — restarting.");
-            for (int sp = 0x01FF; sp >= 0x01C0; sp -= 2) {
-                RAM_0000_BFFF[sp]     = 0x00;
-                RAM_0000_BFFF[sp - 1] = 0xFF;
-            }
-            m6800_reset();  // reset CPU and reload PC/SP
-            return 0;       // continue simulation
-        }
 
         if (PC < 0x0000 || PC > 0xFFFF) {
             Serial.print("Trap: PC out of bounds (");

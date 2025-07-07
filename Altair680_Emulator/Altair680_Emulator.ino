@@ -6,7 +6,7 @@ extern int32_t sim_instr(long);
 extern int32_t PC;
 extern int32_t SP;
 
-uint8_t RAM_0000_BFFF[0xC000];
+char RAM_0000_BFFF[0xC000];
 char StatusRegister = 0x02;
 char ControlRegister = 0;
 char ReceiveDataRegister = 0;
@@ -14,54 +14,48 @@ char ReceiveDataRegister = 0;
 #define MC6850_RTS 13
 
 /*
- * TRACE_PC flag can be set anywhere in simulator, to cause m6800 "fetch_byte" to dump registers on opcode fetch,
+ * TRACE_PC flag can be set anywhere in simmulator, to cause m6800 "fetch_byte" to dump registers on opcode fetch,
  * using the trace() function found in this file.
  */
 int32_t TRACE_PC;
+bool aciaReadIn = false;
   
 // Emulates the Motorola MC6850 ACIA for the Altair 680
 int32_t EmulateMC6850(char rw, int addr, int val = 0) {
     static uint8_t controlReg = 0x00;
-    static uint8_t statusReg = 0x02;  // Bit 1 = TDRE set initially (transmit ready)
+    static uint8_t statusReg = 0x02;  // TDRE set (transmit buffer empty)
     static uint8_t rxData = 0x00;
 
-    // --- Read Access ---
+    // Handle incoming serial data ONLY if RDRF is not already set
+    if (!(statusReg & 0x01) && Serial.available()) {
+        rxData = Serial.read() & 0x7F;  // Strip high bit like 7S1
+        statusReg |= 0x01;              // Set RDRF (data ready)
+    }
+
     if (rw == 'r') {
         switch (addr & 1) {
-            case 0:  // Read Status Register
-                if (Serial.available() > 0) {
-                    if (!(statusReg & 0x01)) {
-                        rxData = Serial.read();
-                        if (rxData == 0x0A) return statusReg;
-                        statusReg |= 0x01;  // Set RDRF
-                    } else {
-                        Serial.read(); // Drop extra
-                    }
-                }
-                // Always set TDRE (bit 1 = transmit ready)
-                statusReg |= 0x02;
+            case 0:  // Read status register
                 return statusReg;
 
-            case 1:  // Read Receive Data Register
+            case 1:  // Read receive data register
                 statusReg &= ~0x01;  // Clear RDRF
                 return rxData;
         }
     }
 
-    // --- Write Access ---
-    else if (rw == 'w') {
+    if (rw == 'w') {
         switch (addr & 1) {
-            case 0:  // Control register
+            case 0:  // Write control register
                 controlReg = val;
                 if (val == 0x03) {
-                    // Master Reset
-                    statusReg = 0x02;  // TDRE = 1, RDRF = 0
+                    // Master reset
+                    statusReg = 0x02;  // TDRE only
                 }
                 break;
 
-            case 1:  // Transmit data register
-                Serial.write(val);
-                statusReg |= 0x02;  // Set TDRE
+            case 1:  // Write transmit data register
+                Serial.write(val & 0x7F);  // Force high bit clear
+                statusReg |= 0x02;         // Set TDRE
                 break;
         }
     }
@@ -135,12 +129,12 @@ void setup() {
     Serial.setTimeout(2);  // Short timeout to flush lingering LF
 
     // Clear RAM
-    //memset(RAM_0000_BFFF, 0x00, sizeof(RAM_0000_BFFF));
+    memset(RAM_0000_BFFF, 0x00, sizeof(RAM_0000_BFFF));
 
-    // for (int sp = 0x01FF; sp >= 0x01C0; sp -= 2) {
-    //     RAM_0000_BFFF[sp]     = 0x00;
-    //     RAM_0000_BFFF[sp - 1] = 0xFF;
-    // }
+    for (int sp = 0x01FF; sp >= 0x01C0; sp -= 2) {
+        RAM_0000_BFFF[sp]     = 0x00;
+        RAM_0000_BFFF[sp - 1] = 0xFF;
+    }
 
      m6800_reset();
 
