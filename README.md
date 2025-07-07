@@ -8,8 +8,8 @@ This emulator combines a 6800 CPU core and peripheral emulation with an Altair 6
 
 ## Code Origins
 
-- The **6800 CPU emulation** is adapted from the SIMH SWTPC emulator originally written by **William Beech**, with corrections and enhancements contributed by **James Nichols**.
-- The version of BASIC included was built from disassembled code provided by **Bruce Tomlin** then modified and compiled with his asmx complier.
+- The **6800 CPU emulation** is adapted from the SIMH 6800 emulator originally written by **William Beech**, with corrections and enhancements contributed by **James Nichols**.
+- The version of BASIC included was retreived from **Mike Douglas's** archive of vintage computer files.
 - The **system and I/O emulation** is based on the SWTPC emulator by **Béla Török**, rewritten and modified to work with the **Altair 680** memory layout and hardware characteristics.
 
 ## Features
@@ -43,20 +43,6 @@ Use L from  the monitor prompt (".") to load Motorola S-records.
 At the prompt, press L and *do not* press return.  Transmit the .s19 text file from your terminal's send feature (no line ending conversion).
 
 Ensure all lines end with a single CR character,  Avoid CRLF.
-
-## About MITS Altair 680 BASIC
-
-This version of Altair 680 BASIC is not from an original distribution tape. The original version of Altair 680 BASIC from MITS required serial communication with settings of 7 bits, Space parity, 1 stop bit.  7S1 is not supported by the Arduino Due, and many terminal emulator programs do not support it.
-
-Instead, this code is derived from a **memory image**—a dump of a running system’s RAM—containing both the BASIC program code and its workspace (including zero-page variables and stack).  It has been modified to work with serial settings of 8N1.
-
-To make this version load and run correctly on actual Altair 680 hardware (or emulators), the following adjustments have been made:
-
-- The disassembly was carefully reviewed to identify and separate code, static data, and runtime workspace.
-- Sections corresponding to RAM variables, stack, and other workspace (normally reserved for system use and not meant to be loaded from tape) have been moved to end of the load image.
-- Any initialization required for proper operation is performed at runtime by the BASIC interpreter itself.
-
-As a result, **this image is suitable for loading via paper tape, S-record, or terminal, and should behave like the original BASIC as distributed by MITS/Microsoft.**  However, it is not an exact byte-for-byte match with any known original release.
 
 ## Notes
 
