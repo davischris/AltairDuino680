@@ -46,8 +46,7 @@ Ensure all lines end with a single CR character,  Avoid CRLF.
 
 ## Notes
 
-- The version of Altair 680 BASIC included (basic680.s19) was built from a disassembled version provided by Bruce Tomlin. I made some changes to it (to operate at 8N1) and assembled it using Bruce's asmx assembler. It seems to be working well. Alert me to any issues you may find.
-- This BASIC does not like lowercase in commands (PRINT, NEW, FOR, etc).  While you can use lowercase within quotes in print statements (PRINT "Hey there lonely girl"), everything else should be uppercase.
+- The version of BASIC included does not like lowercase in commands (PRINT, NEW, FOR, etc).  While you can use lowercase within quotes in print statements (PRINT "Hey there lonely girl"), everything else should be uppercase.
 - Backspace does not work in version 1.1 of Altair 680 BASIC.  Back in 1976 they assumed you would use the strikeout character ("_").
 - The same Monitor ROM and S-records are used with my physical Altair 680 to ensure compatibility
 
