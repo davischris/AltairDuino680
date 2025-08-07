@@ -48,42 +48,42 @@ Ensure all lines end with a single CR character,  Avoid CRLF.
 ## "Instant Load" Programs
 Set to HALT mode.  Set address switches to the desired application and lower DEPOSIT toggle (press down).
 
-Address 0x0001 = Altair 680 BASIC v3.2
-Address 0x0002 = Altair 680 Editor/Assembler v1.0
+- Address 0x0001 = Altair 680 BASIC v3.2
+- Address 0x0002 = Altair 680 Editor/Assembler v1.0
 
 When you toggle RUN mode, the loaded application will start automatically.
 
 ## Loading ROM Images
 When powering up (or connecting via USB) hold down RESET toggle to load ROM based on address.
 
-First nibble address 0x0000 = Monitor ROM
-First nibble address 0x0001 = VTL-2 ROM (launch with J FC00)
-First nibble address 0x0002 = FLEX ROM (untested)
+- First nibble address 0x0000 = Monitor ROM
+- First nibble address 0x0001 = VTL-2 ROM (launch with J FC00)
+- First nibble address 0x0002 = FLEX ROM (untested)
 
 ## Other Power-Up Settings Available
 When powering up (or connecting via USB) hold down RESET toggle to load the following settings:
 
 ### Serial Port
-Second nibble address 0x0000 = Programming USB port on Arduino
-Second nibble address 0x0001 = Serial1 (Arduino pins 18/19)
-Second nibble address 0x0002 = Serial2 (Arduino pins 16/17)
+- Second nibble address 0x0000 = Programming USB port on Arduino
+- Second nibble address 0x0001 = Serial1 (Arduino pins 18/19)
+- Second nibble address 0x0002 = Serial2 (Arduino pins 16/17)
 
 ### Baud Rate
-Third nibble address 0x0000 = 9600 baud (default)
-Third nibble address 0x0001 = 110 baud
-Third nibble address 0x0002 = 300 baud
-Third nibble address 0x0003 = 2400 baud
-Third nibble address 0x0004 = 4800 baud
-Third nibble address 0x0005 = 19200 baud
-Third nibble address 0x0006 = 38400 baud
-Third nibble address 0x0007 = 57600 baud
-Third nibble address 0x0008 = 115200 baud
+- Third nibble address 0x0000 = 9600 baud (default)
+- Third nibble address 0x0001 = 110 baud
+- Third nibble address 0x0002 = 300 baud
+- Third nibble address 0x0003 = 2400 baud
+- Third nibble address 0x0004 = 4800 baud
+- Third nibble address 0x0005 = 19200 baud
+- Third nibble address 0x0006 = 38400 baud
+- Third nibble address 0x0007 = 57600 baud
+- Third nibble address 0x0008 = 115200 baud
 
 ## Saving Settings
-Switch all address switches down, then lower RESET and DEPOSIT toggles at the same time.
-Settings (ROM, Serial Port, and Baud Rate) will be saved to Arduino flash memory.
-To revert to defaults, leave address switches off, hold RESET down, and power up.  Then save settings with RESET + DEPOSIT down.
-Note: uploading new code to Arduino will clear any saved settings and revert to defaults.
+- Switch all address switches down, then lower RESET and DEPOSIT toggles at the same time.
+- Settings (ROM, Serial Port, and Baud Rate) will be saved to Arduino flash memory.
+- To revert to defaults, leave address switches off, hold RESET down, and power up.  Then save settings with RESET + DEPOSIT down.
+- Note: uploading new code to Arduino will clear any saved settings and revert to defaults.
 
 ## Notes
 
