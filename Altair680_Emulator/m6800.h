@@ -69,3 +69,4 @@ extern int32_t CCR;
 extern int32_t saved_PC;
 extern int32_t PC;
 extern int32_t TRACE_PC;
+extern bool basic_interpreter_running;

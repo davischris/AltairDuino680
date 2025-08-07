@@ -1,0 +1,23 @@
+#include <stdint.h>
+int32_t CPU_BD_get_mbyte(int32_t);
+int32_t CPU_BD_get_mword(int32_t);
+void CPU_BD_put_mbyte(int32_t, int32_t);
+void CPU_BD_put_mword(int32_t, int32_t);
+void WriteToConsole(char*);
+uint16_t readAddressSwitches();
+void updateFrontPanelLEDs(uint16_t);
+void showMemoryAtSwitches(uint16_t);
+bool isHaltMode();
+bool isRunMode();
+void checkDepositAction(uint16_t);
+void checkResetAction();
+void flushSerialInput();
+void updateStatusLeds();
+void lightAllPanelLeds();
+void checkSaveConfig();
+void checkLoadSoftware();
+void checkDepositDown();
+void programInjectorFeed();
+void EmulateMC6850_InjectReceivedChar(char c);
+uint8_t getMc6850StatusReg();
+//ConfigData loadConfig();
