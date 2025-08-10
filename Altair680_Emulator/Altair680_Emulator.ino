@@ -38,7 +38,7 @@ unsigned long currentBaudRate = 9600;
 // Address Switches (SW0 - SW15)
 const int switchPins[16] = {
   62, 63, 64, 65, 66, 67, 68, 69,   // SW0-SW7
-  17, 16, 23, 24,                   // SW8-SW11 - NOTE: change 17, 16 to 31, 30 when v1.0.1 boards arrive
+  31, 30, 23, 24,                   // SW8-SW11 - NOTE: change 17, 16 to 31, 30 when v1.0.1 boards arrive
   70, 71, 42, 43                    // SW12-SW15
 };
 
@@ -72,11 +72,13 @@ const int dataSwitchPins[8] = {53, 54, 55, 56, 57, 59, 60, 61};
 int32_t TRACE_PC;
 bool aciaReadIn = false;
 bool altairBasicLoaded = false;
+bool altairAssemblerLoaded = false;
 bool lastDepositDown = HIGH;
 String output_buffer = "";
 bool check_basic = false;
 bool basic_ready_for_input = false;
 bool vtl_ready_for_input = false;
+bool assembler_ready_for_input = false;
 static uint8_t controlReg = 0x00;
 static uint8_t statusReg = 0x02;  // TDRE set (transmit buffer empty)
 static uint8_t rxData = 0x00;
@@ -262,7 +264,60 @@ void setup() {
     // Group 2: SW8–SW11
     uint8_t nibble3 = (addressSwitchValue >> 8) & 0x0F;
 
-    if (!resetDown) {
+    if (resetDown) {
+        if (nibble1 == 0x0001) {
+            activeROM = VTL2_ROM;
+            msg.concat(": VTL-2 ROM loaded.");
+        } else if (nibble1 == 0x0002)
+        {
+            activeROM = FLEX_ROM;
+            msg.concat(": Flex ROM loaded.");
+        } else if (nibble1 == 0x0000) {
+            activeROM = MONITOR_ROM;
+            msg.concat(": Monitor ROM loaded.");
+        }
+
+        if (nibble2 == 0x01) {
+            activePort = &Serial1;
+            currentSelectedPort = 1;
+        } else if (nibble2 == 0x02) {
+            activePort = &Serial2;
+            currentSelectedPort = 2;
+        } else if (nibble2 == 0x00) {
+            activePort = &Serial; // USB serial by default
+            currentSelectedPort = 0;
+        }
+
+        switch (nibble3) {
+            case 0x00:
+                currentBaudRate = 9600;
+                break;
+            case 0x01:
+                currentBaudRate = 110;
+                break;
+            case 0x02:
+                currentBaudRate = 300;
+                break;
+            case 0x03:
+                currentBaudRate = 2400;
+                break;
+            case 0x04:
+                currentBaudRate = 4800;
+                break;
+            case 0x05:
+                currentBaudRate = 19200;
+                break;
+            case 0x06:
+                currentBaudRate = 38400;
+                break;
+            case 0x07:
+                currentBaudRate = 57600;
+                break;
+            case 0x08:
+                currentBaudRate = 115200;
+                break;
+        }
+    } else  {
         //load saved values (if exists)
         ConfigData config = loadConfig();
 
@@ -304,57 +359,6 @@ void setup() {
         currentBaudRate = config.baudRate;
     }
 
-    if (resetDown) {
-        if (nibble1 == 0x0001) {
-            activeROM = VTL2_ROM;
-            msg.concat(": VTL-2 ROM loaded.");
-        } else if (nibble1 == 0x0002)
-        {
-            activeROM = FLEX_ROM;
-            msg.concat(": Flex ROM loaded.");
-        } else if (nibble1 == 0x0000) {
-            activeROM = MONITOR_ROM;
-            msg.concat(": Monitor ROM loaded.");
-        }
-
-        if (nibble2 == 0x01) {
-            activePort = &Serial1;
-        } else if (nibble2 == 0x02) {
-            activePort = &Serial2;
-        } else if (nibble2 == 0x00) {
-            activePort = &Serial; // USB serial by default
-        }
-
-        switch (nibble3) {
-            case 0x00:
-                currentBaudRate = 9600;
-                break;
-            case 0x01:
-                currentBaudRate = 110;
-                break;
-            case 0x02:
-                currentBaudRate = 300;
-                break;
-            case 0x03:
-                currentBaudRate = 2400;
-                break;
-            case 0x04:
-                currentBaudRate = 4800;
-                break;
-            case 0x05:
-                currentBaudRate = 19200;
-                break;
-            case 0x06:
-                currentBaudRate = 38400;
-                break;
-            case 0x07:
-                currentBaudRate = 57600;
-                break;
-            case 0x08:
-                currentBaudRate = 115200;
-                break;
-        }
-    }
 
     programInjectorBegin();
 
@@ -439,6 +443,7 @@ void checkResetAction() {
         m6800_reset(); // or whatever your reset routine is
         check_basic = false;
         basic_ready_for_input = false;
+        assembler_ready_for_input = false;
         vtl_ready_for_input = false;
         programInjectorAbort();
     }
@@ -532,6 +537,7 @@ ConfigData loadConfig() {
         config.selectedROM = 0;  // Default monitor ROM
         config.baudRate = 9600;
     }
+
     return config;
 }
 
@@ -543,6 +549,10 @@ void onSerialOutput(char c) {
 
     if (output_buffer.endsWith("MEMORY SIZE?")) {
         check_basic = true;
+    }
+
+    if (output_buffer.endsWith(" 680 EDITOR ")) {
+        assembler_ready_for_input = true;
     }
 
     if (output_buffer.endsWith("OK\r") || output_buffer.endsWith("OK\n")) {
@@ -566,6 +576,9 @@ void checkDepositDown() {
         } else if (vtl_ready_for_input) {
             uint16_t address = readAddressSwitches();
             programInjectorStart(PROGRAM_VTL2, address);
+        } else if (assembler_ready_for_input) {
+            uint16_t address = readAddressSwitches();
+            programInjectorStart(PROGRAM_ASM, address);
         }
     }
     lastDepositDown = currentDepositDown;
@@ -616,7 +629,7 @@ void loadAltairBasicImage() {
 }
 
 void loadAltairAssemblerImage() {
-    //if (altairBasicLoaded) return;
+    if (altairAssemblerLoaded) return;
 
     // Altair Assembler should load starting at address 0x0000
     uint16_t baseAddress = altair_editor_assembler_load_start;
@@ -626,7 +639,7 @@ void loadAltairAssemblerImage() {
     // Set PC to Editor/Assembler's entry address
     saved_PC = altair_editor_assembler_start;
     activePort->println("Altair Editor/Assembler loaded into RAM.");
-    //altairBasicLoaded = true;
+    altairAssemblerLoaded = true;
 }
 
 uint8_t getMc6850StatusReg() {
