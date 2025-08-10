@@ -16,6 +16,7 @@
 
 #include "Altair680.h"
 #include "m6800.h"
+#include "platform_io.h"
 #include <Arduino.h>
 
 
@@ -108,9 +109,8 @@ extern uint8_t RAM_0000_BFFF[];
 
 extern int32_t TRACE_PC;
 extern void trace(int32_t PC, char *opcode, int32_t CCR, int32_t B, int32_t A, int32_t IX, int32_t SP);
-// extern int32_t CPU_BD_get_mword(int32_t addr);
-// extern void CPU_BD_put_mword(int32_t addr, int32_t val);
-// extern void WriteToConsole(char* Text);
+static uint32_t last_service_us1 = 0;
+static uint32_t last_service_us2 = 0;
 
 const char *opcode[] = {
 //static const char *opcode[] = {
@@ -203,6 +203,31 @@ int32_t oplen[256] = {
 
 #define RESET 52
 
+static inline void service_every_1ms()
+{
+    uint32_t now = micros();
+    if ((uint32_t)(now - last_service_us1) >= 1000) { // ~1ms
+        last_service_us1 = now;
+        uint16_t address = readAddressSwitches();
+        pump_host_serial();
+        updateFrontPanelLEDs(address);
+        checkDepositAction(address);
+    }
+}
+
+// This process checks the address/data LEDs and certain toggle positions every 10ms
+// Checking it more often can cause the processor to lag and create problems
+static inline void service_every_10ms()
+{
+    uint32_t now = micros();
+    if ((uint32_t)(now - last_service_us2) >= 10000) { // ~1ms
+        last_service_us2 = now;
+        updateFrontPanelLEDs(PC);
+        checkDepositDown();
+        programInjectorFeed();
+    }
+}
+
 int32_t sim_instr(int32_t sim_interval)
 {
     int32_t IR, OP, DAR, reason, hi, lo, op1, tmp1, tmp2;
@@ -227,6 +252,7 @@ int32_t sim_instr(int32_t sim_interval)
            on a standard SWTP 6800. All I/O is programmed. */
         }                               /* end interrupt */
 
+        pump_host_serial();
         checkResetAction();
         bool haltNow = isHaltMode();
         bool runNow  = isRunMode();
@@ -239,14 +265,8 @@ int32_t sim_instr(int32_t sim_interval)
 
         if (haltNow)
         {
-            if (micros() - start > 1000)
-            {
-                uint16_t address = readAddressSwitches();
-                updateFrontPanelLEDs(address);
-                checkDepositAction(address);
-                start = micros();
-            }
             wasHalt = true;
+            service_every_1ms();
             updateStatusLeds();
             checkSaveConfig();
             checkLoadSoftware();
@@ -261,15 +281,7 @@ int32_t sim_instr(int32_t sim_interval)
                 PC = saved_PC;
             }
 
-            // This process checks the address/data LEDs and certain toggle positions every 10ms
-            // Checking it more often can cause the processor to lag and create problems
-            unsigned long now = micros();
-            if (now - lastLedUpdate > 10000) { 
-                updateFrontPanelLEDs(PC);
-                lastLedUpdate = now;
-                checkDepositDown();
-                programInjectorFeed();
-            }
+            service_every_10ms();
 
             IR = OP = fetch_byte(0);        /* fetch instruction */
             sim_interval--;

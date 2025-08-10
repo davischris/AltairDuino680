@@ -5,6 +5,8 @@
 #include "altair_editor_assembler.h"
 #include "m6800.h"
 #include "program_injector.h"
+#include "acia_6850.h"
+#include "platform_io.h"
 #include <DueFlashStorage.h>
 
 struct ConfigData {
@@ -18,7 +20,7 @@ DueFlashStorage dueFlashStorage;
 
 enum RomType { MONITOR_ROM, VTL2_ROM, FLEX_ROM };
 RomType activeROM = MONITOR_ROM; // Default at startup
-HardwareSerial* activePort = &Serial; // Default to USB serial
+Stream* activePort = &Serial; // Default to USB serial
 
 extern void m6800_reset();
 extern void dump_regs(void);
@@ -136,32 +138,20 @@ void EmulateMC6850_InjectReceivedChar(char c) {
 }
 
 int32_t CPU_BD_get_mbyte(int32_t addr) {
-    if (addr >= 0x0000 && addr <= 0xBFFF) {
-        return RAM_0000_BFFF[addr];
-    }
+    if (addr >= 0x0000 && addr <= 0xBFFF) return RAM_0000_BFFF[addr];
 
-    // Handle ACIA (MC6850) at F000 (Control/Status) and F001 (Data)
     if (addr == 0xF000 || addr == 0xF001) {
-        return EmulateMC6850('r', addr);
+        return acia_mmio_read((uint16_t)addr);
     }
 
-    // Handle STRAPS input at F002 (monitor config switches)
-    if (addr == 0xF002) {
-        return 0x40;  // Bit 6 set disables echo; Bit 7 clear keeps terminal enabled
-    }
+    if (addr == 0xF002) return 0x40;
 
-    // ROM space
-    if (activeROM == VTL2_ROM && addr >= 0xFC00 && addr <= 0xFEFF) {
-        return vtl2_rom[addr - 0xFC00];
-    } else if (activeROM == FLEX_ROM && addr >= 0xFC00 && addr <= 0xFCFF) {
-        return flex_boot_rom[addr - 0xFC00];
-    }
+    if (activeROM == VTL2_ROM && addr >= 0xFC00 && addr <= 0xFEFF) return vtl2_rom[addr - 0xFC00];
+    else if (activeROM == FLEX_ROM && addr >= 0xFC00 && addr <= 0xFCFF) return flex_boot_rom[addr - 0xFC00];
 
-    if (addr >= 0xFF00 && addr <= 0xFFFF) {
-        return altair680b_rom[addr - 0xFF00];
-    }
+    if (addr >= 0xFF00 && addr <= 0xFFFF) return altair680b_rom[addr - 0xFF00];
 
-    return 0xFF;  // default filler
+    return 0xFF;
 }
 
 void CPU_BD_put_mbyte(int32_t addr, int32_t val) {
@@ -169,7 +159,7 @@ void CPU_BD_put_mbyte(int32_t addr, int32_t val) {
         RAM_0000_BFFF[addr] = val & 0xFF;
     }
     else if (addr == 0xF000 || addr == 0xF001) {
-        EmulateMC6850('w', addr, val);
+        acia_mmio_write((uint16_t)addr, (uint8_t)val);
     }
 }
 
@@ -249,6 +239,7 @@ void setup() {
         RAM_0000_BFFF[sp - 1] = 0xFF;
     }
 
+    acia_init();
     m6800_reset();
 
     // --- ROM/Port selection logic ---
@@ -275,17 +266,6 @@ void setup() {
         } else if (nibble1 == 0x0000) {
             activeROM = MONITOR_ROM;
             msg.concat(": Monitor ROM loaded.");
-        }
-
-        if (nibble2 == 0x01) {
-            activePort = &Serial1;
-            currentSelectedPort = 1;
-        } else if (nibble2 == 0x02) {
-            activePort = &Serial2;
-            currentSelectedPort = 2;
-        } else if (nibble2 == 0x00) {
-            activePort = &Serial; // USB serial by default
-            currentSelectedPort = 0;
         }
 
         switch (nibble3) {
@@ -317,6 +297,20 @@ void setup() {
                 currentBaudRate = 115200;
                 break;
         }
+
+        if (nibble2 == 0x01) {
+            activePort = &Serial1;
+            currentSelectedPort = 1;
+            Serial1.begin(currentBaudRate);
+        } else if (nibble2 == 0x02) {
+            activePort = &Serial2;
+            currentSelectedPort = 2;
+            Serial2.begin(currentBaudRate);
+        } else {
+            activePort = &Serial; // USB serial by default
+            currentSelectedPort = 0;
+            Serial.begin(currentBaudRate);
+        }
     } else  {
         //load saved values (if exists)
         ConfigData config = loadConfig();
@@ -343,15 +337,19 @@ void setup() {
         switch (config.selectedPort) {
             case 0:
                 activePort = &Serial;
+                Serial.begin(config.baudRate);
                 break;
             case 1:
                 activePort = &Serial1;
+                Serial1.begin(config.baudRate);
                 break;
             case 2:
                 activePort = &Serial2;
+                Serial2.begin(config.baudRate);
                 break;
             default:
                 activePort = &Serial;
+                Serial.begin(config.baudRate);
                 break;
         }
         currentSelectedPort = config.selectedPort;
@@ -362,7 +360,7 @@ void setup() {
 
     programInjectorBegin();
 
-    activePort->begin(currentBaudRate);
+    //activePort->begin(currentBaudRate);
     activePort->setTimeout(2);  // Short timeout to flush lingering LF
 
     activePort->println(msg);
@@ -445,7 +443,7 @@ void checkResetAction() {
         basic_ready_for_input = false;
         assembler_ready_for_input = false;
         vtl_ready_for_input = false;
-        programInjectorAbort();
+        programInjectorAbort(true);
     }
     if (lastResetState == LOW && current == HIGH) {
         lightAllPanelLeds(false);

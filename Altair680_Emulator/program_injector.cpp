@@ -1,5 +1,6 @@
 #include "program_injector.h"
 #include "Altair680.h"
+#include "acia_6850.h"
 #include <Arduino.h>
 
 // Add more entries as desired
@@ -25,12 +26,18 @@ static const ProgramEntry programTable[] = {
     // ...add more here...
 };
 
+// At top (keep yours or replace)
 static const ProgramEntry* currentEntry = nullptr;
 static size_t inject_pos = 0;
 static bool injecting = false;
-unsigned long lastInjectTime = 0;
-unsigned long injectCharDelay = 10 * 1000; // 10 ms default per char
-unsigned long injectLineDelay = 50 * 1000; // 50 ms after each line
+
+// Timing knobs (you can tune to taste)
+static unsigned long lastInjectTime = 0;
+// No per-char delay needed when pacing by RX ring:
+static unsigned long injectCharDelay = 0;            // µs
+// Keep a tiny post-line dwell only if you see missed lines; start at 0
+static unsigned long injectLineDelay = 0;            // µs (e.g., 2000 if needed)
+static bool inLineDelay = false;
 
 // =================== INTERFACE IMPLEMENTATION ===================
 
@@ -38,64 +45,77 @@ void programInjectorBegin() {
     currentEntry = nullptr;
     injecting = false;
     inject_pos = 0;
+    lastInjectTime = 0;
 }
 
 void programInjectorStart(ProgramType type, uint16_t address) {
-    // Find matching program
     for (size_t i = 0; i < sizeof(programTable)/sizeof(programTable[0]); ++i) {
         if (programTable[i].type == type && programTable[i].address == address) {
             currentEntry = &programTable[i];
             inject_pos = 0;
             injecting = true;
+            lastInjectTime = micros();
             return;
         }
     }
-    // No match
     currentEntry = nullptr;
     injecting = false;
 }
 
+// Pace purely by ACIA RX space; optional tiny pause after CR
 void programInjectorFeed() {
-    static bool inLineDelay = false;
     unsigned long now = micros();
-    if (!injecting || !currentEntry || !currentEntry->text)
-        return;
+    if (!injecting || !currentEntry || !currentEntry->text) return;
 
+    // Optional: respect a post-line dwell
     if (inLineDelay) {
-        if (now - lastInjectTime < injectLineDelay)
-            return; // Still waiting after line
+        if ((now - lastInjectTime) < injectLineDelay) return;
         inLineDelay = false;
     }
 
-    // Only inject if MC6850 ready for a char
-    if (!(getMc6850StatusReg() & 0x01)) {
+    // Optional: send a small burst per call (prevents starving other tasks)
+    const uint8_t maxBurst = 16;
+    uint8_t sent = 0;
+
+    while (sent < maxBurst) {
         char c = currentEntry->text[inject_pos];
-        if (c) {
-            EmulateMC6850_InjectReceivedChar(c);
-            inject_pos++;
-            lastInjectTime = now;
-            // If end of line, pause longer
-            if (c == '\r' || c == '\n') {
-                inLineDelay = true;
-            }
-        } else {
-            injecting = false; // done!
+        if (!c) {
+            // End of text
+            injecting = false;
             currentEntry = nullptr;
+            return;
         }
+
+        // If you want a per-char throttle (usually unnecessary), enforce it here
+        if (injectCharDelay) {
+            if ((now - lastInjectTime) < injectCharDelay) break;
+        }
+
+        // Try to queue the byte; if RX ring is full, stop and try next tick
+        if (!acia_push_rx((uint8_t)c)) break;
+
+        // Successfully queued: advance
+        inject_pos++;
+        lastInjectTime = now;
+        sent++;
+
+        // If end of line, set optional dwell and stop this tick
+        if (c == '\r' || c == '\n') {
+            if (injectLineDelay) inLineDelay = true;
+            break;
+        }
+
+        // Refresh time if needed
+        now = micros();
     }
 }
 
-bool programInjectorIsInjecting() {
-    return injecting;
-}
-
-const char* programInjectorCurrentName() {
-    return currentEntry ? currentEntry->name : nullptr;
-}
-
-void programInjectorAbort() {
+void programInjectorAbort(bool flushLine) {
     injecting = false;
     currentEntry = nullptr;
     inject_pos = 0;
+    inLineDelay = false;
+    lastInjectTime = 0;
+    if (flushLine) (void)acia_push_rx('\r');
 }
 

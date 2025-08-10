@@ -3329,4 +3329,4 @@ void programInjectorSetInjectCallback(void (*cb)(char));
 
 // For debugging/info
 const char* programInjectorCurrentName();
-void programInjectorAbort();
+void programInjectorAbort(bool);
