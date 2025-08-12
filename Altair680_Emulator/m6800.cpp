@@ -209,7 +209,6 @@ static inline void service_every_1ms()
     if ((uint32_t)(now - last_service_us1) >= 1000) { // ~1ms
         last_service_us1 = now;
         uint16_t address = readAddressSwitches();
-        pump_host_serial();
         updateFrontPanelLEDs(address);
         checkDepositAction(address);
     }

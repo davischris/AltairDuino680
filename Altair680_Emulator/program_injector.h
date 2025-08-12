@@ -3330,3 +3330,7 @@ void programInjectorSetInjectCallback(void (*cb)(char));
 // For debugging/info
 const char* programInjectorCurrentName();
 void programInjectorAbort(bool);
+
+bool is_basic_loaded();
+void loadAltairBasicImage();
+void loadAltairAssemblerImage();

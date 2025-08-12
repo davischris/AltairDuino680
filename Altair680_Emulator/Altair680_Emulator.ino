@@ -1,8 +1,6 @@
 #include "altair680_physical_ROM.h"
 #include "vtl2_rom.h"
 #include "flex_boot_rom.h"
-#include "altair_basic.h"
-#include "altair_editor_assembler.h"
 #include "m6800.h"
 #include "program_injector.h"
 #include "acia_6850.h"
@@ -73,8 +71,6 @@ const int dataSwitchPins[8] = {53, 54, 55, 56, 57, 59, 60, 61};
  */
 int32_t TRACE_PC;
 bool aciaReadIn = false;
-bool altairBasicLoaded = false;
-bool altairAssemblerLoaded = false;
 bool lastDepositDown = HIGH;
 String output_buffer = "";
 bool check_basic = false;
@@ -85,46 +81,6 @@ static uint8_t controlReg = 0x00;
 static uint8_t statusReg = 0x02;  // TDRE set (transmit buffer empty)
 static uint8_t rxData = 0x00;
   
-// Emulates the Motorola MC6850 ACIA for the Altair 680
-int32_t EmulateMC6850(char rw, int addr, int val = 0) {
-    // Handle incoming serial data ONLY if RDRF is not already set
-    if (!(statusReg & 0x01) && activePort->available()) {
-        rxData = activePort->read() & 0x7F;  // Strip high bit like 7S1
-        statusReg |= 0x01;              // Set RDRF (data ready)
-    }
-
-    if (rw == 'r') {
-        switch (addr & 1) {
-            case 0:  // Read status register
-                return statusReg;
-
-            case 1:  // Read receive data register
-                statusReg &= ~0x01;  // Clear RDRF
-                return rxData;
-        }
-    }
-
-    if (rw == 'w') {
-        switch (addr & 1) {
-            case 0:  // Write control register
-                controlReg = val;
-                if (val == 0x03) {
-                    // Master reset
-                    statusReg = 0x02;  // TDRE only
-                }
-                break;
-
-            case 1:  // Write transmit data register
-                activePort->write(val & 0x7F);  // Force high bit clear
-                statusReg |= 0x02;         // Set TDRE
-                onSerialOutput(val & 0x7F);
-                break;
-        }
-    }
-
-    return 0;
-}
-
 void EmulateMC6850_InjectReceivedChar(char c) {
     // Use the same static variables as in EmulateMC6850
     extern uint8_t rxData;
@@ -582,18 +538,6 @@ void checkDepositDown() {
     lastDepositDown = currentDepositDown;
 }
 
-bool is_basic_loaded() {
-    // Signature bytes from S-record at 0x02C0
-    const uint8_t signature[8] = { 0x27, 0x08, 0x8D, 0x42, 0x20, 0xE6, 0xDE, 0x73 };
-
-    for (int i = 0; i < 8; ++i) {
-        if (CPU_BD_get_mbyte(0x02C0 + i) != signature[i]) {
-            return false; // Mismatch found
-        }
-    }
-    return true; // All bytes match
-}
-
 void checkLoadSoftware() {
     bool currentDepositDown = digitalRead(DEPOSITDOWN);
 
@@ -611,36 +555,3 @@ void checkLoadSoftware() {
     }
     lastDepositDown = currentDepositDown;
 }
-
-void loadAltairBasicImage() {
-    if (altairBasicLoaded) return;
-
-    // Altair BASIC should load starting at address 0x0000
-    uint16_t baseAddress = altair_basic_start;
-    for (size_t i = 0; i < altair_basic_len; i++) {
-        RAM_0000_BFFF[baseAddress + i] = pgm_read_byte_near(altair_basic + i);
-    }
-    // Set PC to BASIC's entry address
-    saved_PC = altair_basic_start;
-    activePort->println("Altair BASIC loaded into RAM.");
-    altairBasicLoaded = true;
-}
-
-void loadAltairAssemblerImage() {
-    if (altairAssemblerLoaded) return;
-
-    // Altair Assembler should load starting at address 0x0000
-    uint16_t baseAddress = altair_editor_assembler_load_start;
-    for (size_t i = 0; i < altair_editor_assembler_len; i++) {
-        RAM_0000_BFFF[baseAddress + i] = pgm_read_byte_near(altair_editor_assembler + i);
-    }
-    // Set PC to Editor/Assembler's entry address
-    saved_PC = altair_editor_assembler_start;
-    activePort->println("Altair Editor/Assembler loaded into RAM.");
-    altairAssemblerLoaded = true;
-}
-
-uint8_t getMc6850StatusReg() {
-    return statusReg;
-}
-

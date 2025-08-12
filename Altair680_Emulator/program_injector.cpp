@@ -1,6 +1,9 @@
 #include "program_injector.h"
 #include "Altair680.h"
 #include "acia_6850.h"
+#include "altair_basic.h"
+#include "altair_editor_assembler.h"
+#include "platform_io.h"
 #include <Arduino.h>
 
 // Add more entries as desired
@@ -38,6 +41,10 @@ static unsigned long injectCharDelay = 0;            // µs
 // Keep a tiny post-line dwell only if you see missed lines; start at 0
 static unsigned long injectLineDelay = 0;            // µs (e.g., 2000 if needed)
 static bool inLineDelay = false;
+extern char RAM_0000_BFFF[0xC000];
+bool altairBasicLoaded = false;
+bool altairAssemblerLoaded = false;
+
 
 // =================== INTERFACE IMPLEMENTATION ===================
 
@@ -118,4 +125,49 @@ void programInjectorAbort(bool flushLine) {
     lastInjectTime = 0;
     if (flushLine) (void)acia_push_rx('\r');
 }
+
+bool is_basic_loaded() {
+    // Signature bytes from S-record at 0x02C0
+    const uint8_t signature[8] = { 0x27, 0x08, 0x8D, 0x42, 0x20, 0xE6, 0xDE, 0x73 };
+
+    for (int i = 0; i < 8; ++i) {
+        if (CPU_BD_get_mbyte(0x02C0 + i) != signature[i]) {
+            return false; // Mismatch found
+        }
+    }
+    return true; // All bytes match
+}
+
+void loadAltairBasicImage() {
+    if (altairBasicLoaded) return;
+
+    // Altair BASIC should load starting at address 0x0000
+    uint16_t baseAddress = altair_basic_start;
+    for (size_t i = 0; i < altair_basic_len; i++) {
+        RAM_0000_BFFF[baseAddress + i] = pgm_read_byte_near(altair_basic + i);
+    }
+
+    char buf[80];
+    sprintf(buf, "Altair BASIC loaded into RAM.\r\nTo launch, enter \"J %04X\" at monitor prompt.", altair_basic_start);
+    activePort->println(buf);
+    altairBasicLoaded = true;
+}
+
+void loadAltairAssemblerImage() {
+    if (altairAssemblerLoaded) return;
+
+    // Altair Assembler should load starting at address 0x0000
+    uint16_t baseAddress = altair_editor_assembler_load_start;
+    for (size_t i = 0; i < altair_editor_assembler_len; i++) {
+        RAM_0000_BFFF[baseAddress + i] = pgm_read_byte_near(altair_editor_assembler + i);
+    }
+
+    char buf[100];
+    sprintf(buf, "Altair Editor/Assembler loaded into RAM.\r\nTo launch, enter \"J %04X\" at monitor prompt.", altair_editor_assembler_start);
+    activePort->println(buf);
+    altairAssemblerLoaded = true;
+}
+
+
+
 

@@ -19,5 +19,4 @@ void checkLoadSoftware();
 void checkDepositDown();
 void programInjectorFeed();
 void EmulateMC6850_InjectReceivedChar(char c);
-uint8_t getMc6850StatusReg();
 void onSerialOutput(char c);
