@@ -5,6 +5,7 @@
 #include "program_injector.h"
 #include "acia_6850.h"
 #include "platform_io.h"
+#include "panel_state.h"
 #include <DueFlashStorage.h>
 
 struct ConfigData {
@@ -63,7 +64,7 @@ const int dataSwitchPins[8] = {53, 54, 55, 56, 57, 59, 60, 61};
 #define DEPOSITDOWN 32
 #define RUNLED 9
 #define HALTLED 13
-#define MC6850_RTS 12
+#define ACLED 12
 
 /*
  * TRACE_PC flag can be set anywhere in simmulator, to cause m6800 "fetch_byte" to dump registers on opcode fetch,
@@ -80,7 +81,82 @@ bool assembler_ready_for_input = false;
 static uint8_t controlReg = 0x00;
 static uint8_t statusReg = 0x02;  // TDRE set (transmit buffer empty)
 static uint8_t rxData = 0x00;
-  
+bool g_panel_override = false;
+
+// ------- Debouncer for momentaries -------
+struct DebouncedBtn {
+  uint8_t pin;
+  bool active_low;
+  uint8_t stable;   // 0/1 logical
+  uint8_t counter;
+  bool fell;        // 1->0 edge (pressed for active_low)
+  bool rose;        // 0->1 edge (released for active_low)
+};
+
+static DebouncedBtn btn_reset_down  { RESETDOWN,   true, 1, 0, false, false };
+static DebouncedBtn btn_reset_up    { RESET,       true, 1, 0, false, false };
+static DebouncedBtn btn_deposit_down{ DEPOSITDOWN, true, 1, 0, false, false };
+static DebouncedBtn btn_deposit_up  { DEPOSIT,     true, 1, 0, false, false }; // for “store byte”
+
+static inline uint8_t norm(uint8_t raw, bool al) { return al ? !raw : raw; }
+
+static inline void deb_init_buttons() {
+  pinMode(btn_reset_down.pin,   INPUT_PULLUP);
+  pinMode(btn_reset_up.pin,     INPUT_PULLUP);
+  pinMode(btn_deposit_down.pin, INPUT_PULLUP);
+  pinMode(btn_deposit_up.pin,   INPUT_PULLUP);
+
+  // Initialize stable to the real normalized level so we don't get a false edge at boot
+  btn_reset_down.stable   = norm((uint8_t)digitalRead(btn_reset_down.pin),   btn_reset_down.active_low);
+  btn_reset_up.stable     = norm((uint8_t)digitalRead(btn_reset_up.pin),     btn_reset_up.active_low);
+  btn_deposit_down.stable = norm((uint8_t)digitalRead(btn_deposit_down.pin), btn_deposit_down.active_low);
+  btn_deposit_up.stable   = norm((uint8_t)digitalRead(btn_deposit_up.pin),   btn_deposit_up.active_low);
+
+  // clear counters/edges
+  btn_reset_down.counter = btn_reset_up.counter = btn_deposit_down.counter = btn_deposit_up.counter = 0;
+  btn_reset_down.fell = btn_reset_down.rose = false;
+  btn_reset_up.fell = btn_reset_up.rose = false;
+  btn_deposit_down.fell = btn_deposit_down.rose = false;
+  btn_deposit_up.fell = btn_deposit_up.rose = false;
+}
+
+static inline void deb_update(DebouncedBtn& b) {
+  uint8_t v = norm((uint8_t)digitalRead(b.pin), b.active_low);
+  if (v == b.stable) {
+    b.counter = 0;
+    // DO NOT clear b.fell/b.rose here — leave them latched until read
+    return;
+  }
+  if (b.counter < 0xFF) b.counter++;
+  if (b.counter >= 4) {
+    bool old = b.stable;
+    b.stable = v;
+    b.counter = 0;
+    b.fell = (old == 1 && v == 0);
+    b.rose = (old == 0 && v == 1);
+  }
+}
+
+// RESETDOWN (pressed = toggle DOWN)
+static inline bool reset_down_pressed()  { bool e = btn_reset_down.rose; btn_reset_down.rose = false; return e; }
+static inline bool reset_down_released() { bool e = btn_reset_down.fell; btn_reset_down.fell = false; return e; }
+static inline bool reset_down_held()     { return btn_reset_down.stable; }
+
+// RESET (UP contact) — “held up”
+static inline bool reset_up_pressed()    { bool e = btn_reset_up.rose;   btn_reset_up.rose   = false; return e; }
+static inline bool reset_up_released()   { bool e = btn_reset_up.fell;   btn_reset_up.fell   = false; return e; }
+static inline bool reset_up_held()       { return btn_reset_up.stable; }
+
+// DEPOSITDOWN (toggle DOWN)
+static inline bool deposit_down_pressed(){ bool e = btn_deposit_down.rose; btn_deposit_down.rose = false; return e; }
+static inline bool deposit_down_released(){bool e = btn_deposit_down.fell; btn_deposit_down.fell = false; return e; }
+static inline bool deposit_down_held()   { return btn_deposit_down.stable; }
+
+// DEPOSIT (UP contact) — your “store byte” trigger
+static inline bool deposit_up_pressed()  { bool e = btn_deposit_up.rose; btn_deposit_up.rose = false; return e; }
+static inline bool deposit_up_released() { bool e = btn_deposit_up.fell; btn_deposit_up.fell = false; return e; }
+static inline bool deposit_up_held()     { return btn_deposit_up.stable; }
+
 void EmulateMC6850_InjectReceivedChar(char c) {
     // Use the same static variables as in EmulateMC6850
     extern uint8_t rxData;
@@ -153,8 +229,7 @@ void setup() {
     TRACE_PC = 0;
     String msg ="Starting Altair 680 Emulator";
 
-    pinMode(MC6850_RTS, OUTPUT);
-    digitalWrite(MC6850_RTS, HIGH);
+    deb_init_buttons();
 
     // Initialize switches as INPUT_PULLUP
     for (int i = 0; i < 16; i++) {
@@ -185,6 +260,8 @@ void setup() {
     pinMode(DEPOSITDOWN, INPUT_PULLUP);
     pinMode(HALTLED, OUTPUT);
     pinMode(RUNLED, OUTPUT);
+    pinMode(ACLED, OUTPUT);
+    digitalWrite(ACLED, HIGH);
 
     // Clear RAM
     randomSeed(analogRead(0));
@@ -403,25 +480,27 @@ void checkResetAction() {
     }
     if (lastResetState == LOW && current == HIGH) {
         lightAllPanelLeds(false);
+        updateStatusLeds();
     }
     lastResetState = current;
 }
 
-void checkSaveConfig() {
-    // Check for chord: both toggles held down (LOW = active)
-    bool resetDown  = (digitalRead(RESETDOWN) == LOW);
-    bool depositDown = (digitalRead(DEPOSITDOWN) == LOW);
+bool checkSaveConfig() {
+    bool ret = false;
 
-    static bool lastChord = false; // remember previous state
+    // debounced levels from our helpers
+    const bool bothHeld = reset_down_held() && deposit_down_held();
 
-    if (resetDown && depositDown && !lastChord) {
-        // Only trigger on the transition (to avoid multiple saves)
+    static bool lastBoth = false;  // remember prior chord state
+    if (bothHeld && !lastBoth) {
+        // fire once on transition to "both held"
         saveConfig(currentSelectedPort, activeROM, currentBaudRate);
-
-        // Optional: user feedback
-        activePort->println("Config saved.");
+        if (activePort) activePort->println("Config saved.");
+        ret = true;
     }
-    lastChord = resetDown && depositDown;
+    lastBoth = bothHeld;
+
+    return ret;
 }
 
 
@@ -454,22 +533,13 @@ void updateStatusLeds() {
     }
 }
 
-void lightAllPanelLeds(bool ledState) {
-    // Turn on all address LEDs
-    for (int i = 0; i < 16; i++) {
-        if (ledState)
-            digitalWrite(ledPins[i], HIGH);
-        else
-            digitalWrite(ledPins[i], LOW);
-    }
-    // Turn on all data LEDs
-    for (int i = 0; i < 8; i++) {
-        if (ledState)
-            digitalWrite(dataLedPins[i], HIGH);
-        else
-            digitalWrite(dataLedPins[i], LOW);
-    }
-}
+void lightAllPanelLeds(bool on) {
+    for (int i = 0; i < 16; ++i) digitalWrite(ledPins[i],     on ? HIGH : LOW);
+    for (int i = 0; i < 8;  ++i) digitalWrite(dataLedPins[i], on ? HIGH : LOW);
+    digitalWrite(RUNLED,  on ? HIGH : LOW);
+    digitalWrite(HALTLED, on ? HIGH : LOW);
+    digitalWrite(ACLED, HIGH);
+} 
 
 void saveConfig(uint8_t port, uint8_t rom, unsigned long baudRate) {
     ConfigData config = { port, rom, baudRate, uint8_t(port ^ rom ^ baudRate ^ 0x55) }; // simple XOR checksum
@@ -554,4 +624,11 @@ void checkLoadSoftware() {
         }
     }
     lastDepositDown = currentDepositDown;
+}
+
+void pollFrontPanelButtons() {
+    deb_update(btn_reset_down);
+    deb_update(btn_reset_up);
+    deb_update(btn_deposit_down);
+    deb_update(btn_deposit_up);
 }
