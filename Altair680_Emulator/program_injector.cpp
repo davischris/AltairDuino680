@@ -138,6 +138,18 @@ bool is_basic_loaded() {
     return true; // All bytes match
 }
 
+bool is_assembler_loaded() {
+    // Signature bytes from S-record at 0x0107
+    const uint8_t signature[8] = { 0xC6, 0xFF, 0x8C, 0xC6, 0x01, 0x20, 0x09, 0x5F };
+
+    for (int i = 0; i < 8; ++i) {
+        if (CPU_BD_get_mbyte(0x0107 + i) != signature[i]) {
+            return false; // Mismatch found
+        }
+    }
+    return true; // All bytes match
+}
+
 void loadAltairBasicImage() {
     if (altairBasicLoaded) return;
 
@@ -151,6 +163,7 @@ void loadAltairBasicImage() {
     sprintf(buf, "Altair BASIC loaded into RAM.\r\nTo launch, enter \"J %04X\" at monitor prompt.", altair_basic_start);
     activePort->println(buf);
     altairBasicLoaded = true;
+    altairAssemblerLoaded = false;
 }
 
 void loadAltairAssemblerImage() {
@@ -166,6 +179,7 @@ void loadAltairAssemblerImage() {
     sprintf(buf, "Altair Editor/Assembler loaded into RAM.\r\nTo launch, enter \"J %04X\" at monitor prompt.", altair_editor_assembler_start);
     activePort->println(buf);
     altairAssemblerLoaded = true;
+    altairBasicLoaded = false;
 }
 
 

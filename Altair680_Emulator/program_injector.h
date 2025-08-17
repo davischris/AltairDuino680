@@ -3332,5 +3332,6 @@ const char* programInjectorCurrentName();
 void programInjectorAbort(bool);
 
 bool is_basic_loaded();
+bool is_assembler_loaded();
 void loadAltairBasicImage();
 void loadAltairAssemblerImage();

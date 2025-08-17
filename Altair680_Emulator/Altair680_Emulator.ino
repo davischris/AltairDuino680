@@ -5,7 +5,6 @@
 #include "program_injector.h"
 #include "acia_6850.h"
 #include "platform_io.h"
-#include "panel_state.h"
 #include <DueFlashStorage.h>
 
 struct ConfigData {
@@ -81,81 +80,6 @@ bool assembler_ready_for_input = false;
 static uint8_t controlReg = 0x00;
 static uint8_t statusReg = 0x02;  // TDRE set (transmit buffer empty)
 static uint8_t rxData = 0x00;
-bool g_panel_override = false;
-
-// ------- Debouncer for momentaries -------
-struct DebouncedBtn {
-  uint8_t pin;
-  bool active_low;
-  uint8_t stable;   // 0/1 logical
-  uint8_t counter;
-  bool fell;        // 1->0 edge (pressed for active_low)
-  bool rose;        // 0->1 edge (released for active_low)
-};
-
-static DebouncedBtn btn_reset_down  { RESETDOWN,   true, 1, 0, false, false };
-static DebouncedBtn btn_reset_up    { RESET,       true, 1, 0, false, false };
-static DebouncedBtn btn_deposit_down{ DEPOSITDOWN, true, 1, 0, false, false };
-static DebouncedBtn btn_deposit_up  { DEPOSIT,     true, 1, 0, false, false }; // for “store byte”
-
-static inline uint8_t norm(uint8_t raw, bool al) { return al ? !raw : raw; }
-
-static inline void deb_init_buttons() {
-  pinMode(btn_reset_down.pin,   INPUT_PULLUP);
-  pinMode(btn_reset_up.pin,     INPUT_PULLUP);
-  pinMode(btn_deposit_down.pin, INPUT_PULLUP);
-  pinMode(btn_deposit_up.pin,   INPUT_PULLUP);
-
-  // Initialize stable to the real normalized level so we don't get a false edge at boot
-  btn_reset_down.stable   = norm((uint8_t)digitalRead(btn_reset_down.pin),   btn_reset_down.active_low);
-  btn_reset_up.stable     = norm((uint8_t)digitalRead(btn_reset_up.pin),     btn_reset_up.active_low);
-  btn_deposit_down.stable = norm((uint8_t)digitalRead(btn_deposit_down.pin), btn_deposit_down.active_low);
-  btn_deposit_up.stable   = norm((uint8_t)digitalRead(btn_deposit_up.pin),   btn_deposit_up.active_low);
-
-  // clear counters/edges
-  btn_reset_down.counter = btn_reset_up.counter = btn_deposit_down.counter = btn_deposit_up.counter = 0;
-  btn_reset_down.fell = btn_reset_down.rose = false;
-  btn_reset_up.fell = btn_reset_up.rose = false;
-  btn_deposit_down.fell = btn_deposit_down.rose = false;
-  btn_deposit_up.fell = btn_deposit_up.rose = false;
-}
-
-static inline void deb_update(DebouncedBtn& b) {
-  uint8_t v = norm((uint8_t)digitalRead(b.pin), b.active_low);
-  if (v == b.stable) {
-    b.counter = 0;
-    // DO NOT clear b.fell/b.rose here — leave them latched until read
-    return;
-  }
-  if (b.counter < 0xFF) b.counter++;
-  if (b.counter >= 4) {
-    bool old = b.stable;
-    b.stable = v;
-    b.counter = 0;
-    b.fell = (old == 1 && v == 0);
-    b.rose = (old == 0 && v == 1);
-  }
-}
-
-// RESETDOWN (pressed = toggle DOWN)
-static inline bool reset_down_pressed()  { bool e = btn_reset_down.rose; btn_reset_down.rose = false; return e; }
-static inline bool reset_down_released() { bool e = btn_reset_down.fell; btn_reset_down.fell = false; return e; }
-static inline bool reset_down_held()     { return btn_reset_down.stable; }
-
-// RESET (UP contact) — “held up”
-static inline bool reset_up_pressed()    { bool e = btn_reset_up.rose;   btn_reset_up.rose   = false; return e; }
-static inline bool reset_up_released()   { bool e = btn_reset_up.fell;   btn_reset_up.fell   = false; return e; }
-static inline bool reset_up_held()       { return btn_reset_up.stable; }
-
-// DEPOSITDOWN (toggle DOWN)
-static inline bool deposit_down_pressed(){ bool e = btn_deposit_down.rose; btn_deposit_down.rose = false; return e; }
-static inline bool deposit_down_released(){bool e = btn_deposit_down.fell; btn_deposit_down.fell = false; return e; }
-static inline bool deposit_down_held()   { return btn_deposit_down.stable; }
-
-// DEPOSIT (UP contact) — your “store byte” trigger
-static inline bool deposit_up_pressed()  { bool e = btn_deposit_up.rose; btn_deposit_up.rose = false; return e; }
-static inline bool deposit_up_released() { bool e = btn_deposit_up.fell; btn_deposit_up.fell = false; return e; }
-static inline bool deposit_up_held()     { return btn_deposit_up.stable; }
 
 void EmulateMC6850_InjectReceivedChar(char c) {
     // Use the same static variables as in EmulateMC6850
@@ -228,8 +152,6 @@ void randomizeRAM() {
 void setup() {
     TRACE_PC = 0;
     String msg ="Starting Altair 680 Emulator";
-
-    deb_init_buttons();
 
     // Initialize switches as INPUT_PULLUP
     for (int i = 0; i < 16; i++) {
@@ -488,17 +410,21 @@ void checkResetAction() {
 bool checkSaveConfig() {
     bool ret = false;
 
-    // debounced levels from our helpers
-    const bool bothHeld = reset_down_held() && deposit_down_held();
+    // Check for chord: both toggles held down (LOW = active)
+    bool resetDown  = (digitalRead(RESETDOWN) == LOW);
+    bool depositDown = (digitalRead(DEPOSITDOWN) == LOW);
 
-    static bool lastBoth = false;  // remember prior chord state
-    if (bothHeld && !lastBoth) {
-        // fire once on transition to "both held"
+    static bool lastChord = false; // remember previous state
+
+    if (resetDown && depositDown && !lastChord) {
+        // Only trigger on the transition (to avoid multiple saves)
         saveConfig(currentSelectedPort, activeROM, currentBaudRate);
-        if (activePort) activePort->println("Config saved.");
+
+        // Optional: user feedback
+        activePort->println("Config saved.");
         ret = true;
     }
-    lastBoth = bothHeld;
+    lastChord = resetDown && depositDown;
 
     return ret;
 }
@@ -571,21 +497,50 @@ void onSerialOutput(char c) {
     if (output_buffer.length() > 12)
         output_buffer = output_buffer.substring(output_buffer.length() - 12);
 
-    if (output_buffer.endsWith("MEMORY SIZE?")) {
-        check_basic = true;
-    }
+    // if (output_buffer.endsWith("MEMORY SIZE?")) {
+    //     check_basic = true;
+    // }
 
-    if (output_buffer.endsWith(" 680 EDITOR ")) {
-        assembler_ready_for_input = true;
-    }
-
-    if (output_buffer.endsWith("OK\r") || output_buffer.endsWith("OK\n")) {
-        if (check_basic == true) {
+    if (output_buffer.endsWith("J 0000")) {
+        if (is_basic_loaded()) {
+            resetSoftwareLoadedFlags();
             basic_ready_for_input = true;
-        } else {
+        }
+    }
+
+    if (output_buffer.endsWith("J FC00")) {
+        if (activeROM == VTL2_ROM) {
+            resetSoftwareLoadedFlags();
             vtl_ready_for_input = true;
         }
     }
+
+    if (output_buffer.endsWith(" 680 EDITOR ")) {
+        resetSoftwareLoadedFlags();
+        assembler_ready_for_input = true;
+    }
+
+    if (output_buffer.endsWith("J 0107") || output_buffer.endsWith("J 010A")) {
+        if (is_assembler_loaded()) {
+            resetSoftwareLoadedFlags();
+            assembler_ready_for_input = true;
+        }
+    }
+
+    // if (output_buffer.endsWith("OK\r") || output_buffer.endsWith("OK\n")) {
+    //     if (check_basic == true) {
+    //         basic_ready_for_input = true;
+    //     } else {
+    //         vtl_ready_for_input = true;
+    //     }
+    // }
+}
+
+void resetSoftwareLoadedFlags() {
+    assembler_ready_for_input = false;
+    check_basic = false;
+    basic_ready_for_input = false;
+    vtl_ready_for_input = false;
 }
 
 void checkDepositDown() {
@@ -610,9 +565,10 @@ void checkDepositDown() {
 
 void checkLoadSoftware() {
     bool currentDepositDown = digitalRead(DEPOSITDOWN);
+    bool resetDown  = (digitalRead(RESETDOWN) == LOW);
 
     // Edge detection: only load on transition HIGH -> LOW
-    if (lastDepositDown == HIGH && currentDepositDown == LOW) {
+    if (lastDepositDown == HIGH && currentDepositDown == LOW && !resetDown) {
         uint16_t address = readAddressSwitches();
         switch (address) {
             case 0x0001:
@@ -626,9 +582,3 @@ void checkLoadSoftware() {
     lastDepositDown = currentDepositDown;
 }
 
-void pollFrontPanelButtons() {
-    deb_update(btn_reset_down);
-    deb_update(btn_reset_up);
-    deb_update(btn_deposit_down);
-    deb_update(btn_deposit_up);
-}

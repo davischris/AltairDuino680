@@ -211,7 +211,6 @@ static inline void service_every_1ms()
         uint16_t address = readAddressSwitches();
         updateFrontPanelLEDs(address);
         checkDepositAction(address);
-        pollFrontPanelButtons();
         updateStatusLeds();
         if (!checkSaveConfig())
             checkLoadSoftware();
@@ -228,7 +227,6 @@ static inline void service_every_10ms()
         updateFrontPanelLEDs(PC);
         checkDepositDown();
         programInjectorFeed();
-        pollFrontPanelButtons();
     }
 }
 
