@@ -5,6 +5,8 @@
 #include "program_injector.h"
 #include "acia_6850.h"
 #include "platform_io.h"
+#include "bus.h"
+#include "panel.h"
 #include <DueFlashStorage.h>
 
 struct ConfigData {
@@ -42,15 +44,15 @@ const int switchPins[16] = {
   70, 71, 42, 43                    // SW12-SW15
 };
 
-// Address LEDs (A0 - A15)
-const int ledPins[16] = {
-  34, 35, 36, 37, 38, 39, 40, 41,   // A0-A7
-  51, 50, 49, 48,                   // A8-A11
-  47, 46, 45, 44                    // A12-A15
-};
+// // Address LEDs (A0 - A15)
+// const int ledPins[16] = {
+//   34, 35, 36, 37, 38, 39, 40, 41,   // A0-A7
+//   51, 50, 49, 48,                   // A8-A11
+//   47, 46, 45, 44                    // A12-A15
+// };
 
-// Data LEDs (D0 - D7)
-const int dataLedPins[8] = {25, 26, 27, 28, 14, 15, 29, 11};
+// // Data LEDs (D0 - D7)
+// const int dataLedPins[8] = {25, 26, 27, 28, 14, 15, 29, 11};
 
 // Data Switches
 const int dataSwitchPins[8] = {53, 54, 55, 56, 57, 59, 60, 61};
@@ -93,31 +95,92 @@ void EmulateMC6850_InjectReceivedChar(char c) {
     }
 }
 
-int32_t CPU_BD_get_mbyte(int32_t addr) {
-    if (addr >= 0x0000 && addr <= 0xBFFF) return RAM_0000_BFFF[addr];
+int32_t CPU_BD_get_mbyte(int32_t addr, bool is_fetch) {
+    uint32_t now = micros();
+    uint8_t v;
+    bus_type_t t = is_fetch ? BUS_FETCH : BUS_READ;
 
+    if (addr >= 0x0000 && addr <= 0xBFFF) {
+        v = RAM_0000_BFFF[addr];
+        bus_capture((uint16_t)addr, v, t, now);
+        return v;
+    }
     if (addr == 0xF000 || addr == 0xF001) {
-        return acia_mmio_read((uint16_t)addr);
+        v = acia_mmio_read((uint16_t)addr);
+        bus_capture((uint16_t)addr, v, BUS_IO, now);
+        return v;
+    }
+    if (addr == 0xF002) {
+        v = 0x40; // straps
+        bus_capture((uint16_t)addr, v, BUS_IO, now);
+        return v;
+    }
+    if (addr >= 0xFC00 && addr <= 0xFEFF) {
+        if (activeROM == VTL2_ROM) {
+            v = vtl2_rom[addr - 0xFC00];
+            bus_capture((uint16_t)addr, v, t, now);
+            return v;
+        } else if (activeROM == FLEX_ROM && addr <= 0xFCFF) {
+            v = flex_boot_rom[addr - 0xFC00];
+            bus_capture((uint16_t)addr, v, t, now);
+            return v;
+        }
+        // fall through if unmapped under current ROM
+    }
+    if (addr >= 0xFF00 && addr <= 0xFFFF) {
+        v = altair680b_rom[addr - 0xFF00];
+        bus_capture((uint16_t)addr, v, t, now);
+        return v;
     }
 
-    if (addr == 0xF002) return 0x40;
-
-    if (activeROM == VTL2_ROM && addr >= 0xFC00 && addr <= 0xFEFF) return vtl2_rom[addr - 0xFC00];
-    else if (activeROM == FLEX_ROM && addr >= 0xFC00 && addr <= 0xFCFF) return flex_boot_rom[addr - 0xFC00];
-
-    if (addr >= 0xFF00 && addr <= 0xFFFF) return altair680b_rom[addr - 0xFF00];
-
-    return 0xFF;
+    v = 0xFF; // unmapped pulls high
+    bus_capture((uint16_t)addr, v, t, now);
+    return v;
 }
 
 void CPU_BD_put_mbyte(int32_t addr, int32_t val) {
+    uint32_t now = micros();
+    uint8_t v = (uint8_t)val;
+
     if (addr >= 0x0000 && addr <= 0xBFFF) {
-        RAM_0000_BFFF[addr] = val & 0xFF;
+        RAM_0000_BFFF[addr] = v;
+        bus_capture((uint16_t)addr, v, BUS_WRITE, now);
+        return;
     }
-    else if (addr == 0xF000 || addr == 0xF001) {
-        acia_mmio_write((uint16_t)addr, (uint8_t)val);
+    if (addr == 0xF000 || addr == 0xF001) {
+        acia_mmio_write((uint16_t)addr, v);
+        bus_capture((uint16_t)addr, v, BUS_IO, now);
+        return;
     }
+    // ROM/unmapped writes still show address/data on bus
+    bus_capture((uint16_t)addr, v, BUS_WRITE, now);
 }
+
+// int32_t CPU_BD_get_mbyte(int32_t addr) {
+//     if (addr >= 0x0000 && addr <= 0xBFFF) return RAM_0000_BFFF[addr];
+
+//     if (addr == 0xF000 || addr == 0xF001) {
+//         return acia_mmio_read((uint16_t)addr);
+//     }
+
+//     if (addr == 0xF002) return 0x40;
+
+//     if (activeROM == VTL2_ROM && addr >= 0xFC00 && addr <= 0xFEFF) return vtl2_rom[addr - 0xFC00];
+//     else if (activeROM == FLEX_ROM && addr >= 0xFC00 && addr <= 0xFCFF) return flex_boot_rom[addr - 0xFC00];
+
+//     if (addr >= 0xFF00 && addr <= 0xFFFF) return altair680b_rom[addr - 0xFF00];
+
+//     return 0xFF;
+// }
+
+// void CPU_BD_put_mbyte(int32_t addr, int32_t val) {
+//     if (addr >= 0x0000 && addr <= 0xBFFF) {
+//         RAM_0000_BFFF[addr] = val & 0xFF;
+//     }
+//     else if (addr == 0xF000 || addr == 0xF001) {
+//         acia_mmio_write((uint16_t)addr, (uint8_t)val);
+//     }
+// }
 
 int32_t CPU_BD_get_mword(int32_t addr) {
     uint8_t hi = CPU_BD_get_mbyte(addr);
@@ -162,17 +225,17 @@ void setup() {
         pinMode(dataSwitchPins[i], INPUT_PULLUP);
     }
 
-    // Initialize LEDs as OUTPUT, turn them off initially
-    for (int i = 0; i < 16; i++) {
-        pinMode(ledPins[i], OUTPUT);
-        digitalWrite(ledPins[i], LOW);
-    }
+    // // Initialize LEDs as OUTPUT, turn them off initially
+    // for (int i = 0; i < 16; i++) {
+    //     pinMode(ledPins[i], OUTPUT);
+    //     digitalWrite(ledPins[i], LOW);
+    // }
 
-    // Initialize data LED pins as outputs, and turn them off initially
-    for (int i = 0; i < 8; i++) {
-        pinMode(dataLedPins[i], OUTPUT);
-        digitalWrite(dataLedPins[i], LOW);
-    }
+    // // Initialize data LED pins as outputs, and turn them off initially
+    // for (int i = 0; i < 8; i++) {
+    //     pinMode(dataLedPins[i], OUTPUT);
+    //     digitalWrite(dataLedPins[i], LOW);
+    // }
 
     pinMode(HALT, INPUT_PULLUP); // RUN switch (D20)
     pinMode(RUN, INPUT_PULLUP); // HALT switch (D21)
@@ -194,6 +257,7 @@ void setup() {
         RAM_0000_BFFF[sp - 1] = 0xFF;
     }
 
+    panel_begin();
     acia_init();
     m6800_reset();
 
@@ -320,15 +384,15 @@ void setup() {
 
     activePort->println(msg);
 
-    showMemoryAtSwitches(0);    // show data at memory location 0
+    //showMemoryAtSwitches(0);    // show data at memory location 0
     updateStatusLeds();
 }
 
 void loop() {
     int32_t reason;
 
-    uint16_t address = readAddressSwitches();
-    updateFrontPanelLEDs(address);
+    // uint16_t address = readAddressSwitches();
+    // updateFrontPanelLEDs(address);
 
     reason = sim_instr(1);         // Execute one instruction per loop
 
@@ -349,12 +413,12 @@ uint16_t readAddressSwitches() {
     return value;
 }
 
-void updateFrontPanelLEDs(uint16_t addressValue) {
-    for (int i = 0; i < 16; i++) {
-        digitalWrite(ledPins[i], (addressValue & (1 << i)) ? HIGH : LOW);
-    }
-    showMemoryAtSwitches(addressValue);
-}
+// void updateFrontPanelLEDs(uint16_t addressValue) {
+//     for (int i = 0; i < 16; i++) {
+//         digitalWrite(ledPins[i], (addressValue & (1 << i)) ? HIGH : LOW);
+//     }
+//     showMemoryAtSwitches(addressValue);
+// }
 
 uint8_t readDataSwitches() {
     uint8_t value = 0;
@@ -460,7 +524,7 @@ void updateStatusLeds() {
 }
 
 void lightAllPanelLeds(bool on) {
-    for (int i = 0; i < 16; ++i) digitalWrite(ledPins[i],     on ? HIGH : LOW);
+    for (int i = 0; i < 16; ++i) digitalWrite(addrLedPins[i], on ? HIGH : LOW);
     for (int i = 0; i < 8;  ++i) digitalWrite(dataLedPins[i], on ? HIGH : LOW);
     digitalWrite(RUNLED,  on ? HIGH : LOW);
     digitalWrite(HALTLED, on ? HIGH : LOW);

@@ -17,6 +17,8 @@
 #include "Altair680.h"
 #include "m6800.h"
 #include "platform_io.h"
+#include "bus.h"
+#include "panel.h"
 #include <Arduino.h>
 
 
@@ -208,8 +210,16 @@ static inline void service_every_1ms()
     uint32_t now = micros();
     if ((uint32_t)(now - last_service_us1) >= 1000) { // ~1ms
         last_service_us1 = now;
+
         uint16_t address = readAddressSwitches();
-        updateFrontPanelLEDs(address);
+        
+        // HALT is allowed to peek memory so data LEDs match the switch address
+        showMemoryAtSwitches(address);
+
+        panel_poll_and_update(now, (uint16_t)PC, /*halted=*/true,
+                            /*have_halt_override=*/true,
+                            /*halt_override_addr=*/address);
+
         checkDepositAction(address);
         updateStatusLeds();
         if (!checkSaveConfig())
@@ -222,9 +232,10 @@ static inline void service_every_1ms()
 static inline void service_every_10ms()
 {
     uint32_t now = micros();
-    if ((uint32_t)(now - last_service_us2) >= 10000) { // ~1ms
+    if ((uint32_t)(now - last_service_us2) >= 10000) { // ~10ms
         last_service_us2 = now;
-        updateFrontPanelLEDs(PC);
+
+        panel_poll_and_update(now, (uint16_t)PC, /*halted=*/false);
         checkDepositDown();
         programInjectorFeed();
     }
