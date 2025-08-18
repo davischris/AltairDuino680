@@ -1,4 +1,4 @@
-# AltairDuino680 - an Altair 680 Emulator
+# Altair-Duino 680 - an Altair 680 Emulator
 
 This project emulates the MITS Altair 680 microcomputer with 48k of RAM using an Arduino Due to simulate a 6800-based CPU and peripherals, including serial communication via a Motorola MC6850 (ACIA) interface.
 
