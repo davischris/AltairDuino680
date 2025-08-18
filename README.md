@@ -21,6 +21,18 @@ This emulator combines a 6800 CPU core and peripheral emulation with an Altair 6
 - Debugging output on simulation halt
 - Ability to "instantly" load Altair 680 BASIC v3.2 or Editor/Assembler v1.0
 
+## Front Panel Emulation
+- Address LEDs (A0–A15) now reflect the actual 6800 address bus.
+- Data LEDs (D0–D7) reflect the current data bus value.
+- In HALT mode, the address switches let you directly inspect memory contents at the selected address, just like the real Altair 680.
+- In RUN mode, the LEDs show live CPU activity (addresses and data changing as instructions execute).
+- This provides a much more historically accurate “blinkenlights” experience compared to earlier versions.
+
+## Headless Mode
+- If the Arduino Due is run without any front panel hardware connected, the emulator will automatically detect this and force RUN mode.
+- This allows BASIC or other programs to run on a bare Due with nothing but a USB serial connection.
+- With headless mode enabled, panel-related features (LEDs, switches, DEPOSIT/RESET actions) are simply ignored.
+
 ## Installation and Setup
 
 ### Hardware

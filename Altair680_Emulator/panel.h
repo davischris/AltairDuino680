@@ -26,7 +26,7 @@ static const uint8_t dataLedPins[8] = { 25, 26, 27, 28, 14, 15, 29, 11 };
 
 // How long to prefer "live bus" over PC on the panel
 #ifndef PANEL_DATA_DECAY_US
-#define PANEL_DATA_DECAY_US  12000u  // 40 ms; tune 20–80 ms to taste
+#define PANEL_DATA_DECAY_US  40000u  // 40 ms; tune 20–80 ms to taste
 #endif
 
 void panel_begin();

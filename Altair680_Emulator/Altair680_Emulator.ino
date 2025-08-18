@@ -44,16 +44,6 @@ const int switchPins[16] = {
   70, 71, 42, 43                    // SW12-SW15
 };
 
-// // Address LEDs (A0 - A15)
-// const int ledPins[16] = {
-//   34, 35, 36, 37, 38, 39, 40, 41,   // A0-A7
-//   51, 50, 49, 48,                   // A8-A11
-//   47, 46, 45, 44                    // A12-A15
-// };
-
-// // Data LEDs (D0 - D7)
-// const int dataLedPins[8] = {25, 26, 27, 28, 14, 15, 29, 11};
-
 // Data Switches
 const int dataSwitchPins[8] = {53, 54, 55, 56, 57, 59, 60, 61};
 
@@ -82,6 +72,8 @@ bool assembler_ready_for_input = false;
 static uint8_t controlReg = 0x00;
 static uint8_t statusReg = 0x02;  // TDRE set (transmit buffer empty)
 static uint8_t rxData = 0x00;
+// Track whether we're running with no panel hardware
+static bool g_headless = false;
 
 void EmulateMC6850_InjectReceivedChar(char c) {
     // Use the same static variables as in EmulateMC6850
@@ -376,6 +368,7 @@ void setup() {
         currentBaudRate = config.baudRate;
     }
 
+    detect_headless_at_boot();   // determine if we have a panel or not
 
     programInjectorBegin();
 
@@ -495,15 +488,18 @@ bool checkSaveConfig() {
 
 
 void showMemoryAtSwitches(uint16_t address) {
+    if (g_headless) return; // no panel → nothing to show
     uint8_t value = CPU_BD_get_mbyte(address);
     displayDataOnLEDs(value);
 }
 
 bool isHaltMode() {
+    if (g_headless) return false;      // never HALT in headless mode
     return digitalRead(HALT) == LOW; // HALT is active LOW
 }
 
 bool isRunMode() {
+    if (g_headless) return true;       // always RUN in headless mode
     return digitalRead(RUN) == LOW; // RUN is active LOW
 }
 
@@ -646,3 +642,17 @@ void checkLoadSoftware() {
     lastDepositDown = currentDepositDown;
 }
 
+void detect_headless_at_boot() {
+    // Sample RUN and HALT inputs for ~50ms
+    uint32_t t0 = millis();
+    bool lowSeenRun  = false;
+    bool lowSeenHalt = false;
+
+    while (millis() - t0 < 50) {
+        if (digitalRead(RUN)  == LOW) lowSeenRun  = true;
+        if (digitalRead(HALT) == LOW) lowSeenHalt = true;
+    }
+
+    // If neither switch ever went LOW → assume nothing wired → headless
+    g_headless = (!lowSeenRun && !lowSeenHalt);
+}
