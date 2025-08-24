@@ -1,4 +1,3 @@
-// altair_editor_assembler.h
 //  ALTAIR 680 ASSEMBLER/EDITOR
 //  REVISION 1.0   NOV. 1976
 //  COPYRIGHT 1976 BY MITS INC.

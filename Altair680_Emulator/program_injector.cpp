@@ -3,6 +3,7 @@
 #include "acia_6850.h"
 #include "altair_basic.h"
 #include "altair_editor_assembler.h"
+#include "kill_the_bit.h"
 #include "platform_io.h"
 #include <Arduino.h>
 
@@ -179,6 +180,20 @@ void loadAltairAssemblerImage() {
     sprintf(buf, "Altair Editor/Assembler loaded into RAM.\r\nTo launch, enter \"J %04X\" at monitor prompt.", altair_editor_assembler_start);
     activePort->println(buf);
     altairAssemblerLoaded = true;
+    altairBasicLoaded = false;
+}
+
+void loadKillTheBit() {
+    uint16_t baseAddress = KTB_LOAD_ADDR;
+    for (size_t i = 0; i < kill_the_bit_size; i++) {
+        RAM_0000_BFFF[baseAddress + i] = pgm_read_byte_near(kill_the_bit_bin + i);
+    }
+
+    char buf[100];
+    sprintf(buf, "Kill the Bit loaded into RAM.\r\nTo launch, enter \"J %04X\" at monitor prompt.", baseAddress);
+    activePort->println(buf);
+
+    altairAssemblerLoaded = false;
     altairBasicLoaded = false;
 }
 

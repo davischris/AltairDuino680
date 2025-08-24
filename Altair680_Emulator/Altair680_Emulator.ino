@@ -38,7 +38,7 @@ uint32_t currentSelectedPort = 0;
 unsigned long currentBaudRate = 9600;
 
 // Address Switches (SW0 - SW15)
-const int switchPins[16] = {
+const int addressSwitchPins[16] = {
   62, 63, 64, 65, 66, 67, 68, 69,   // SW0-SW7
   31, 30, 23, 24,                   // SW8-SW11 - NOTE: change 17, 16 to 31, 30 when v1.0.1 boards arrive
   70, 71, 42, 43                    // SW12-SW15
@@ -210,7 +210,7 @@ void setup() {
 
     // Initialize switches as INPUT_PULLUP
     for (int i = 0; i < 16; i++) {
-        pinMode(switchPins[i], INPUT_PULLUP);
+        pinMode(addressSwitchPins[i], INPUT_PULLUP);
     }
 
     for (int i = 0; i < 8; i++) {
@@ -399,7 +399,7 @@ void loop() {
 uint16_t readAddressSwitches() {
     uint16_t value = 0;
     for (int i = 0; i < 16; i++) {
-        if (!digitalRead(switchPins[i])) {
+        if (!digitalRead(addressSwitchPins[i])) {
             value |= (1 << i);
         }
     }
@@ -636,6 +636,9 @@ void checkLoadSoftware() {
                 break;
             case 0x0002:
                 loadAltairAssemblerImage();
+                break;
+            case 0x0003:
+                loadKillTheBit();
                 break;
         }
     }

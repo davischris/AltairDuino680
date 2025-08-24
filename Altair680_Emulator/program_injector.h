@@ -3335,3 +3335,4 @@ bool is_basic_loaded();
 bool is_assembler_loaded();
 void loadAltairBasicImage();
 void loadAltairAssemblerImage();
+void loadKillTheBit();

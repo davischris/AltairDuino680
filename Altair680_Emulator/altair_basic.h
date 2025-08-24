@@ -1,4 +1,3 @@
-// altair_basic.h
 // Paper BASIC V1.1 R3.2 for Altair 680
 // Converted from S-Record file "Paper BASIC V1.1 R3.2.S19"
 const uint16_t altair_basic_start = 0x0000;

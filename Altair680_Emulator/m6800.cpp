@@ -288,7 +288,7 @@ int32_t sim_instr(int32_t sim_interval)
                 flushSerialInput();
                 wasHalt = false;
                 updateStatusLeds();
-                PC = saved_PC;
+                //PC = saved_PC;
             }
 
             service_every_10ms();
