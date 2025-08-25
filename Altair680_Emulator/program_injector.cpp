@@ -1,7 +1,7 @@
 #include "program_injector.h"
 #include "Altair680.h"
 #include "acia_6850.h"
-#include "altair_basic.h"
+#include "altair_cassette_basic.h"
 #include "altair_editor_assembler.h"
 #include "kill_the_bit.h"
 #include "platform_io.h"
@@ -129,7 +129,7 @@ void programInjectorAbort(bool flushLine) {
 
 bool is_basic_loaded() {
     // Signature bytes from S-record at 0x02C0
-    const uint8_t signature[8] = { 0x27, 0x08, 0x8D, 0x42, 0x20, 0xE6, 0xDE, 0x73 };
+    const uint8_t signature[8] = { 0x80, 0x81, 0x26, 0x14, 0xEE, 0x01, 0xDF, 0x73 };
 
     for (int i = 0; i < 8; ++i) {
         if (CPU_BD_get_mbyte(0x02C0 + i) != signature[i]) {
@@ -155,13 +155,13 @@ void loadAltairBasicImage() {
     if (altairBasicLoaded) return;
 
     // Altair BASIC should load starting at address 0x0000
-    uint16_t baseAddress = altair_basic_start;
-    for (size_t i = 0; i < altair_basic_len; i++) {
-        RAM_0000_BFFF[baseAddress + i] = pgm_read_byte_near(altair_basic + i);
+    uint16_t baseAddress = altair_cassette_basic_start;
+    for (size_t i = 0; i < altair_cassette_basic_len; i++) {
+        RAM_0000_BFFF[baseAddress + i] = pgm_read_byte_near(altair_cassette_basic + i);
     }
 
     char buf[80];
-    sprintf(buf, "Altair BASIC loaded into RAM.\r\nTo launch, enter \"J %04X\" at monitor prompt.", altair_basic_start);
+    sprintf(buf, "Altair BASIC loaded into RAM.\r\nTo launch, enter \"J %04X\" at monitor prompt.", altair_cassette_basic_start);
     activePort->println(buf);
     altairBasicLoaded = true;
     altairAssemblerLoaded = false;
