@@ -8,6 +8,7 @@ void    acia_init();
 // Memory-mapped access (use these from your memmap)
 uint8_t acia_mmio_read(uint16_t addr);         // addr & 1: 0=status, 1=data
 void    acia_mmio_write(uint16_t addr, uint8_t val);
+void    acia_receive_byte(uint8_t c);
 
 // Host-side helpers (terminal ↔ emulator)
 bool    acia_push_rx(uint8_t c);               // queue char from “terminal” to ACIA (returns false if full)
