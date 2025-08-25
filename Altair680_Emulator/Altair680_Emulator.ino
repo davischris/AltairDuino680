@@ -7,6 +7,8 @@
 #include "platform_io.h"
 #include "bus.h"
 #include "panel.h"
+#include "sd_card.h"
+#include "altair_cassette_basic.h"
 #include <DueFlashStorage.h>
 
 struct ConfigData {
@@ -29,13 +31,11 @@ extern int32_t PC;
 extern int32_t SP;
 
 char RAM_0000_BFFF[0xC000];
-char StatusRegister = 0x02;
-char ControlRegister = 0;
-char ReceiveDataRegister = 0;
 bool lastDepositState = HIGH;
 bool lastResetState = HIGH;
 uint32_t currentSelectedPort = 0;
 unsigned long currentBaudRate = 9600;
+static String host_line;
 
 // Address Switches (SW0 - SW15)
 const int addressSwitchPins[16] = {
@@ -69,11 +69,9 @@ bool check_basic = false;
 bool basic_ready_for_input = false;
 bool vtl_ready_for_input = false;
 bool assembler_ready_for_input = false;
-static uint8_t controlReg = 0x00;
-static uint8_t statusReg = 0x02;  // TDRE set (transmit buffer empty)
-static uint8_t rxData = 0x00;
 // Track whether we're running with no panel hardware
 static bool g_headless = false;
+static const char* CONFIG_PATH = "/Altair680.ini";
 
 void EmulateMC6850_InjectReceivedChar(char c) {
     // Use the same static variables as in EmulateMC6850
@@ -217,18 +215,6 @@ void setup() {
         pinMode(dataSwitchPins[i], INPUT_PULLUP);
     }
 
-    // // Initialize LEDs as OUTPUT, turn them off initially
-    // for (int i = 0; i < 16; i++) {
-    //     pinMode(ledPins[i], OUTPUT);
-    //     digitalWrite(ledPins[i], LOW);
-    // }
-
-    // // Initialize data LED pins as outputs, and turn them off initially
-    // for (int i = 0; i < 8; i++) {
-    //     pinMode(dataLedPins[i], OUTPUT);
-    //     digitalWrite(dataLedPins[i], LOW);
-    // }
-
     pinMode(HALT, INPUT_PULLUP); // RUN switch (D20)
     pinMode(RUN, INPUT_PULLUP); // HALT switch (D21)
     pinMode(DEPOSIT, INPUT_PULLUP);
@@ -249,6 +235,7 @@ void setup() {
         RAM_0000_BFFF[sp - 1] = 0xFF;
     }
 
+    sd_begin();
     panel_begin();
     acia_init();
     m6800_reset();
@@ -372,20 +359,15 @@ void setup() {
 
     programInjectorBegin();
 
-    //activePort->begin(currentBaudRate);
     activePort->setTimeout(2);  // Short timeout to flush lingering LF
 
     activePort->println(msg);
 
-    //showMemoryAtSwitches(0);    // show data at memory location 0
     updateStatusLeds();
 }
 
 void loop() {
     int32_t reason;
-
-    // uint16_t address = readAddressSwitches();
-    // updateFrontPanelLEDs(address);
 
     reason = sim_instr(1);         // Execute one instruction per loop
 
@@ -405,13 +387,6 @@ uint16_t readAddressSwitches() {
     }
     return value;
 }
-
-// void updateFrontPanelLEDs(uint16_t addressValue) {
-//     for (int i = 0; i < 16; i++) {
-//         digitalWrite(ledPins[i], (addressValue & (1 << i)) ? HIGH : LOW);
-//     }
-//     showMemoryAtSwitches(addressValue);
-// }
 
 uint8_t readDataSwitches() {
     uint8_t value = 0;
@@ -527,25 +502,105 @@ void lightAllPanelLeds(bool on) {
     digitalWrite(ACLED, HIGH);
 } 
 
-void saveConfig(uint8_t port, uint8_t rom, unsigned long baudRate) {
-    ConfigData config = { port, rom, baudRate, uint8_t(port ^ rom ^ baudRate ^ 0x55) }; // simple XOR checksum
+static inline void trimInPlace(String& s) {
+  s.trim();                 // removes leading/trailing spaces, CR, LF, tabs
+  // also strip possible Windows BOM or weird chars if needed later
+}
 
-    byte b2[sizeof(ConfigData)]; // create byte array to store the struct
-    memcpy(b2, &config, sizeof(ConfigData)); // copy the struct to the byte array
-    dueFlashStorage.write(0, b2, sizeof(ConfigData)); // address 0
+void saveConfig(uint8_t port, uint8_t rom, unsigned long baudRate) {
+    // write a human-readable INI to SD (if card present)
+    char ini[160];
+    // Use \r\n so it’s friendly to Windows editors too
+    snprintf(ini, sizeof(ini),
+             "CurrentROM=%u\r\n"
+             "SerialPort=%u\r\n"
+             "BaudRate=%lu\r\n",
+             (unsigned)rom, (unsigned)port, baudRate);
+
+    if (sd_present()) {
+        if (!sd_write_text(CONFIG_PATH, ini)) {
+            activePort->println("Warning: failed to write SD config.");
+        } else {
+            activePort->print("Config saved to SD: ");
+            activePort->println(CONFIG_PATH);
+        }
+    } else {
+        ConfigData config = { port, rom, baudRate, uint8_t(port ^ rom ^ baudRate ^ 0x55) };
+        byte b2[sizeof(ConfigData)];
+        memcpy(b2, &config, sizeof(ConfigData));
+        dueFlashStorage.write(0, b2, sizeof(ConfigData));
+        activePort->print("Config saved to flash memory. ");
+    }
 }
 
 ConfigData loadConfig() {
     ConfigData config;
-    byte* b = dueFlashStorage.readAddress(0); // byte array which is read from flash at adress 4
-    memcpy(&config, b, sizeof(ConfigData)); // copy byte array to temporary struct
-    
-    // Check for erased flash (0xFF)
+    // Start with flash values (backward-compatible)
+    byte* b = dueFlashStorage.readAddress(0);
+    memcpy(&config, b, sizeof(ConfigData));
+
+    // If flash looks erased, seed defaults
     if (config.selectedPort == 0xFF && config.selectedROM == 0xFF && config.checksum == 0xFF) {
-        // All erased: treat as first boot
-        config.selectedPort = 0; // Default USB
-        config.selectedROM = 0;  // Default monitor ROM
-        config.baudRate = 9600;
+        config.selectedPort = 0;   // USB
+        config.selectedROM  = 0;   // Monitor
+        config.baudRate     = 9600;
+        config.checksum     = uint8_t(config.selectedPort ^ config.selectedROM ^ config.baudRate ^ 0x55);
+    }
+
+    // If SD has an ini, let it override (friendly to edit on a PC)
+    String text;
+    if (sd_present() && sd_read_text(CONFIG_PATH, text)) {
+        // Very simple INI parser: key=value per line, case-insensitive keys, spaces allowed
+        uint8_t rom = config.selectedROM;
+        uint8_t port = config.selectedPort;
+        unsigned long baud = config.baudRate;
+
+        int lineStart = 0;
+        while (true) {
+            int lineEnd = text.indexOf('\n', lineStart);
+            String line = (lineEnd >= 0) ? text.substring(lineStart, lineEnd)
+                                         : text.substring(lineStart);
+            trimInPlace(line);
+            // Skip blanks and comments
+            if (line.length() && line.charAt(0) != ';' && line.charAt(0) != '#') {
+                int eq = line.indexOf('=');
+                if (eq > 0) {
+                    String k = line.substring(0, eq);
+                    String v = line.substring(eq + 1);
+                    trimInPlace(k);
+                    trimInPlace(v);
+                    k.toLowerCase();
+
+                    if (k == "currentrom") {
+                        rom = (uint8_t) v.toInt();
+                    } else if (k == "serialport") {
+                        port = (uint8_t) v.toInt();
+                    } else if (k == "baudrate") {
+                        // allow underscores or spaces in numbers, e.g., "115_200"
+                        v.replace("_", ""); v.replace(" ", "");
+                        baud = (unsigned long) v.toInt();
+                    }
+                }
+            }
+            if (lineEnd < 0) break;
+            lineStart = lineEnd + 1;
+        }
+
+        // Basic validation
+        if (baud == 0) baud = 9600; // guard
+        config.selectedROM  = rom;
+        config.selectedPort = port;
+        config.baudRate     = baud;
+        config.checksum     = uint8_t(port ^ rom ^ baud ^ 0x55);
+
+        // activePort->print("Config loaded from SD: ");
+        // activePort->println(CONFIG_PATH);
+    } else {
+        // No SD or no INI; we’re using flash defaults
+        // Write the defaults out so the card gets a file next time
+        if (sd_present()) {
+            saveConfig(config.selectedPort, config.selectedROM, config.baudRate);
+        }
     }
 
     return config;
@@ -556,10 +611,6 @@ void onSerialOutput(char c) {
 
     if (output_buffer.length() > 12)
         output_buffer = output_buffer.substring(output_buffer.length() - 12);
-
-    // if (output_buffer.endsWith("MEMORY SIZE?")) {
-    //     check_basic = true;
-    // }
 
     if (output_buffer.endsWith("J 0000")) {
         if (is_basic_loaded()) {
@@ -586,14 +637,6 @@ void onSerialOutput(char c) {
             assembler_ready_for_input = true;
         }
     }
-
-    // if (output_buffer.endsWith("OK\r") || output_buffer.endsWith("OK\n")) {
-    //     if (check_basic == true) {
-    //         basic_ready_for_input = true;
-    //     } else {
-    //         vtl_ready_for_input = true;
-    //     }
-    // }
 }
 
 void resetSoftwareLoadedFlags() {
@@ -658,4 +701,10 @@ void detect_headless_at_boot() {
 
     // If neither switch ever went LOW → assume nothing wired → headless
     g_headless = (!lowSeenRun && !lowSeenHalt);
+}
+
+void intercept_and_forward_host_input() {
+    while (activePort->available()) {
+        acia_receive_byte((uint8_t)activePort->read());
+    }
 }

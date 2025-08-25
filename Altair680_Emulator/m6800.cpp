@@ -19,6 +19,8 @@
 #include "platform_io.h"
 #include "bus.h"
 #include "panel.h"
+#include "sd_card.h"
+#include "altair_cassette_basic.h"
 #include <Arduino.h>
 
 
@@ -220,6 +222,7 @@ static inline void service_every_1ms()
                             /*have_halt_override=*/true,
                             /*halt_override_addr=*/address);
 
+        sd_service();
         checkDepositAction(address);
         updateStatusLeds();
         if (!checkSaveConfig())
@@ -236,6 +239,7 @@ static inline void service_every_10ms()
         last_service_us2 = now;
 
         panel_poll_and_update(now, (uint16_t)PC, /*halted=*/false);
+        sd_service();
         checkDepositDown();
         programInjectorFeed();
     }
